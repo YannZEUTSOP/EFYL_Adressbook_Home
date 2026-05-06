@@ -54,8 +54,11 @@ export default function NewAddress() {
     setCoords(null);
     if (Platform.OS === 'web') {
       // Browser geolocation
-      if (!('geolocation' in navigator)) {
-        Alert.alert('GPS', 'Geolocation not available in this browser');
+      if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
+        Alert.alert(
+          'GPS indisponible',
+          "Votre navigateur ne prend pas en charge la géolocalisation. Ouvrez l'app sur votre téléphone pour une position précise."
+        );
         return;
       }
       setMeasuring(true);
@@ -73,21 +76,15 @@ export default function NewAddress() {
             try { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch { /* ignore */ }
           }
         },
-        () => {
-          // simulate when permission denied: provide demo coords near Bonamoussadi
-          let acc = 8;
-          const tick = setInterval(() => {
-            acc = Math.max(0.7, acc * 0.85);
-            setCoords({
-              latitude: 4.0951 + (Math.random() - 0.5) * 0.0001,
-              longitude: 9.7679 + (Math.random() - 0.5) * 0.0001,
-              accuracy: Number(acc.toFixed(1)),
-              timestamp: Date.now(),
-            });
-            if (acc <= 0.8) clearInterval(tick);
-          }, 800);
-          // store cleanup id by reusing watchSub
-          watchSub.current = { remove: () => clearInterval(tick) } as Location.LocationSubscription;
+        (err) => {
+          // Do NOT inject fake coords — show the real error.
+          setMeasuring(false);
+          const code = err?.code;
+          let title = 'Géolocalisation refusée';
+          let msg = "Autorisez la géolocalisation dans votre navigateur puis réessayez.";
+          if (code === 2) { title = 'GPS indisponible'; msg = "Position introuvable. Vérifiez que le GPS de votre appareil est activé."; }
+          else if (code === 3) { title = 'Délai dépassé'; msg = "Le signal GPS met trop de temps. Déplacez-vous vers un ciel dégagé et réessayez."; }
+          Alert.alert(title, msg);
         },
         { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
       );

@@ -43,14 +43,24 @@ export default function VerifyScreen() {
   const start = async () => {
     setMeasuring(true);
     if (Platform.OS === 'web') {
-      // demo coords
-      let acc = 6;
-      const tk = setInterval(() => {
-        acc = Math.max(0.9, acc * 0.85);
-        setCoords({ lat: 4.0951, lng: 9.7679, accuracy: Number(acc.toFixed(1)) });
-        if (acc <= 0.95) clearInterval(tk);
-      }, 800);
-      watchRef.current = { remove: () => clearInterval(tk) } as Location.LocationSubscription;
+      if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
+        Alert.alert('GPS indisponible', "Votre navigateur ne supporte pas la géolocalisation.");
+        setMeasuring(false);
+        return;
+      }
+      const id = navigator.geolocation.watchPosition(
+        (pos) => setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy ?? 99 }),
+        (err) => {
+          setMeasuring(false);
+          const code = err?.code;
+          let msg = "Autorisez la géolocalisation dans votre navigateur puis réessayez.";
+          if (code === 2) msg = "Position introuvable. Vérifiez que le GPS est activé.";
+          else if (code === 3) msg = "Délai dépassé. Ciel dégagé et réessayez.";
+          Alert.alert('Géolocalisation refusée', msg);
+        },
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
+      );
+      watchRef.current = { remove: () => navigator.geolocation.clearWatch(id) } as Location.LocationSubscription;
       return;
     }
     const { status } = await Location.requestForegroundPermissionsAsync();
