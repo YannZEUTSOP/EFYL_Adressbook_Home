@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Platform, Animated, Easing, TextInput, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Platform, Animated, Easing, TextInput, KeyboardAvoidingView, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -93,9 +93,33 @@ export default function NewAddress() {
       watchSub.current = { remove: () => navigator.geolocation.clearWatch(id) } as Location.LocationSubscription;
       return;
     }
-    const { status } = await Location.requestForegroundPermissionsAsync();
+    const current = await Location.getForegroundPermissionsAsync();
+    let status = current.status;
+    let canAskAgain = current.canAskAgain;
     if (status !== 'granted') {
-      Alert.alert('GPS', 'Permission required');
+      const asked = await Location.requestForegroundPermissionsAsync();
+      status = asked.status;
+      canAskAgain = asked.canAskAgain;
+    }
+    if (status !== 'granted') {
+      Alert.alert(
+        'Permission GPS requise',
+        canAskAgain
+          ? "Autorisez l'accès à la position pour mesurer votre porte."
+          : "L'accès à la position a été refusé. Ouvrez les Réglages pour l'activer.",
+        [
+          { text: 'Annuler', style: 'cancel' },
+          ...(!canAskAgain
+            ? [{ text: 'Réglages', onPress: () => Linking.openSettings() }]
+            : []),
+        ]
+      );
+      return;
+    }
+    // Ensure GPS/Location services are enabled on device
+    const enabled = await Location.hasServicesEnabledAsync();
+    if (!enabled) {
+      Alert.alert('GPS désactivé', "Activez la localisation dans les réglages de l'appareil.");
       return;
     }
     setMeasuring(true);

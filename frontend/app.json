@@ -1,22 +1,36 @@
 {
   "expo": {
-    "name": "frontend",
+    "name": "EFYL Address Book",
     "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "frontend",
+    "scheme": "efyladdress",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.efyl.addressbook",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Mesure GPS précise de votre porte d'entrée",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Mesure GPS précise de votre porte d'entrée",
+        "NSCameraUsageDescription": "Scanner les QR codes d'adresses partagées",
+        "NSPhotoLibraryUsageDescription": "Enregistrer les QR codes générés"
+      }
     },
     "android": {
+      "package": "com.efyl.addressbook",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#000"
+        "backgroundColor": "#0D5C3A"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "VIBRATE"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -26,12 +40,28 @@
     "plugins": [
       "expo-router",
       [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Mesure GPS précise de votre porte d'entrée",
+          "locationWhenInUsePermission": "Mesure GPS précise de votre porte d'entrée",
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Scanner les QR codes d'adresses partagées",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#000"
+          "backgroundColor": "#0D5C3A"
         }
       ]
     ],
