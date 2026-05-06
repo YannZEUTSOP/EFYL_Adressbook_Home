@@ -38,7 +38,6 @@ export default function RootLayout() {
           <Stack.Screen name="qr/[id]" />
           <Stack.Screen name="verify/[id]" />
           <Stack.Screen name="import" />
-          <Stack.Screen name="sync" />
         </Stack>
       </AppProvider>
     </SafeAreaProvider>
