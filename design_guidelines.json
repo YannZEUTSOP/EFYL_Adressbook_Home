@@ -1,0 +1,293 @@
+{
+  "project_info": {
+    "name": "EFYL Digital Address Book",
+    "platform": "React Native (Expo)",
+    "domain": "Mobile Mapping & Digital Addressing",
+    "target_audience": "Residents of Douala, Cameroon (outdoor usage, entry-level Androids, intermittent data)",
+    "design_theme": {
+      "theme": "LIGHT",
+      "archetype": "1 (Organic & Earthy)",
+      "justification": "Earthy, warm, and natural tones to create a welcoming local feel. Avoids cold, clinical tech-bro aesthetics."
+    }
+  },
+  "colors": {
+    "primary": {
+      "default": "#0D5C3A",
+      "light": "#1A8C58",
+      "foreground": "#FFFFFF"
+    },
+    "accent": {
+      "default": "#E8851A",
+      "light": "#FDB44B",
+      "foreground": "#FFFFFF"
+    },
+    "semantic": {
+      "success": "#22C55E",
+      "warning": "#F59E0B",
+      "error": "#EF4444",
+      "gps_red": "#DC2626",
+      "gps_yellow": "#D97706",
+      "gps_green": "#16A34A"
+    },
+    "neutral": {
+      "background": "#F8F6F0",
+      "card": "#FFFFFF",
+      "surface": "#F1EDE4",
+      "text_primary": "#1A1A1A",
+      "text_secondary": "#5C5C5C",
+      "divider": "#E2DDD5"
+    }
+  },
+  "typography": {
+    "fonts": {
+      "primary": "DM Sans",
+      "mono": "JetBrains Mono"
+    },
+    "scale": {
+      "h1": {
+        "fontSize": 32,
+        "lineHeight": 40,
+        "fontFamily": "DM Sans",
+        "fontWeight": "700",
+        "letterSpacing": -0.5
+      },
+      "h2": {
+        "fontSize": 24,
+        "lineHeight": 32,
+        "fontFamily": "DM Sans",
+        "fontWeight": "700",
+        "letterSpacing": -0.3
+      },
+      "h3": {
+        "fontSize": 20,
+        "lineHeight": 28,
+        "fontFamily": "DM Sans",
+        "fontWeight": "600",
+        "letterSpacing": -0.2
+      },
+      "body_large": {
+        "fontSize": 18,
+        "lineHeight": 26,
+        "fontFamily": "DM Sans",
+        "fontWeight": "400"
+      },
+      "body": {
+        "fontSize": 16,
+        "lineHeight": 24,
+        "fontFamily": "DM Sans",
+        "fontWeight": "400"
+      },
+      "label": {
+        "fontSize": 14,
+        "lineHeight": 20,
+        "fontFamily": "DM Sans",
+        "fontWeight": "500"
+      },
+      "address_code": {
+        "fontSize": 20,
+        "lineHeight": 28,
+        "fontFamily": "JetBrains Mono",
+        "fontWeight": "700",
+        "letterSpacing": 1.5
+      }
+    }
+  },
+  "spacing_and_layout": {
+    "scale": {
+      "xs": 4,
+      "sm": 8,
+      "md": 16,
+      "lg": 24,
+      "xl": 32,
+      "2xl": 48
+    },
+    "rules": [
+      "Minimum touch target size is 48x48dp for accessibility.",
+      "High contrast for outdoor sunlight readability.",
+      "Cards have 16dp internal padding minimum.",
+      "Bottom navigation is 64dp high, clearly separated from content."
+    ]
+  },
+  "components": {
+    "buttons": {
+      "primary": {
+        "backgroundColor": "primary.default",
+        "borderRadius": 12,
+        "paddingVertical": 16,
+        "alignItems": "center"
+      },
+      "fab": {
+        "backgroundColor": "primary.default",
+        "borderRadius": 28,
+        "width": 56,
+        "height": 56,
+        "shadowColor": "#000",
+        "shadowOpacity": 0.25,
+        "shadowRadius": 8,
+        "elevation": 5
+      }
+    },
+    "map_pins": {
+      "verified": {
+        "color": "semantic.success",
+        "shape": "teardrop"
+      },
+      "unverified": {
+        "color": "semantic.warning",
+        "shape": "teardrop"
+      },
+      "flagged": {
+        "color": "semantic.error",
+        "shape": "teardrop"
+      },
+      "user_location": {
+        "color": "neutral.text_primary",
+        "shape": "dot_with_pulse"
+      }
+    },
+    "gps_accuracy_badge": {
+      "shape": "pill",
+      "paddingHorizontal": 16,
+      "paddingVertical": 8,
+      "fontWeight": "700",
+      "fontSize": 18
+    },
+    "iconography": {
+      "library": "Phosphor Icons",
+      "style": "Bold or Duotone"
+    }
+  },
+  "motion": {
+    "rules": [
+      "Hero/shared element transitions for address detail screens.",
+      "FAB scale + rotation when pressed or switching to map.",
+      "GPS pulsing rings: concentric circles scaling out and fading to indicate measuring precision.",
+      "Scan success checkmark: spring animation.",
+      "Use skeleton screens instead of spinners to preserve perceived performance over spotty networks."
+    ]
+  },
+  "screens": {
+    "splash": {
+      "description": "Splash screen with animated EFYL logo.",
+      "layout": "Centered logo on Primary (#0D5C3A) background."
+    },
+    "onboarding": {
+      "description": "3 slides onboarding explaining the app.",
+      "elements": [
+        "Language selector FR/EN",
+        "Illustrations",
+        "Next/Skip buttons"
+      ]
+    },
+    "home_address_book": {
+      "description": "List of saved addresses.",
+      "elements": [
+        "Search bar",
+        "Filter chips",
+        "Address cards",
+        "FAB '+' for New Address",
+        "Offline banner"
+      ]
+    },
+    "new_address_wizard": {
+      "description": "3-step wizard to create an address.",
+      "steps": [
+        "Step 1: Live GPS measurement with real-time accuracy (large numerical display, animated concentric circles).",
+        "Step 2: Address details form (district, sector, street #, house #, contact).",
+        "Step 3: Review & Save with QR + map preview."
+      ]
+    },
+    "qr_display": {
+      "description": "Large QR for sharing.",
+      "elements": [
+        "Large 250x250 QR Code",
+        "Address code in JetBrains Mono",
+        "Share buttons (WhatsApp, SMS, Email, Download)"
+      ]
+    },
+    "qr_scanner": {
+      "description": "Full-screen camera scanner.",
+      "elements": [
+        "Animated scanning frame",
+        "Torch toggle",
+        "Success bottom sheet"
+      ]
+    },
+    "address_detail": {
+      "description": "Details of an address.",
+      "elements": [
+        "Name",
+        "Address Code",
+        "GPS coords with precision badge",
+        "Mini map",
+        "Action buttons (Get Directions, Share, Show QR, Edit)",
+        "Verification status"
+      ]
+    },
+    "map_view": {
+      "description": "Full-screen interactive map.",
+      "elements": [
+        "Custom EFYL pins",
+        "Clustering",
+        "Search bar overlay",
+        "'My Location' FAB"
+      ]
+    },
+    "profile_settings": {
+      "description": "User profile and app settings.",
+      "elements": [
+        "Avatar",
+        "Phone",
+        "Stats",
+        "Language toggle",
+        "Sync status",
+        "Export/delete data"
+      ]
+    },
+    "login": {
+      "description": "Phone auth screen.",
+      "elements": [
+        "Country code selector (+237)",
+        "Phone input",
+        "OTP 6-digit input",
+        "Guest mode option"
+      ]
+    }
+  },
+  "media": {
+    "onboarding_1": {
+      "url": "https://static.prod-images.emergentagent.com/jobs/01bc7a24-6841-47ee-8fcc-c01d9b3ffb38/images/15756694da4f7fd53bb2e6600fe1a4ba2e2b97401ac3cd7bbb79d9dbd7a95db9.png",
+      "description": "Onboarding slide 1 - Welcome to Douala street mapping"
+    },
+    "onboarding_2": {
+      "url": "https://static.prod-images.emergentagent.com/jobs/01bc7a24-6841-47ee-8fcc-c01d9b3ffb38/images/4350b8fbd9d7b8019392ca81c3dedfc5d89ed5079c7bc16390b94645f947ec22.png",
+      "description": "Onboarding slide 2 - GPS Accuracy and Pinpointing"
+    },
+    "onboarding_3": {
+      "url": "https://static.prod-images.emergentagent.com/jobs/01bc7a24-6841-47ee-8fcc-c01d9b3ffb38/images/c6636cb2c2c71c0998dd955b10e0d0632556e55f8c8ea89d752e8724e0b4b9f9.png",
+      "description": "Onboarding slide 3 - Sharing Digital Addresses with community"
+    },
+    "empty_state_address": {
+      "url": "https://static.prod-images.emergentagent.com/jobs/01bc7a24-6841-47ee-8fcc-c01d9b3ffb38/images/ec63c662bb5979c2b36aa637cea40952552492b39b8653a35cea9e8b5623f62a.png",
+      "description": "Empty state illustration for Address Book when no addresses are saved"
+    },
+    "avatar_placeholder": {
+      "url": "https://images.unsplash.com/photo-1594385464373-91a02a3afeda?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzNDR8MHwxfHNlYXJjaHwxfHxkb3VhbGElMjBjYW1lcm9vbiUyMHN0cmVldCUyMHBvcnRyYWl0fGVufDB8fHx8MTc3ODA3Mjk5NXww&ixlib=rb-4.1.0&q=85",
+      "description": "Profile picture placeholder - African local portrait"
+    },
+    "street_preview_1": {
+      "url": "https://images.unsplash.com/photo-1601979112151-26f9fa4520b5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzNDR8MHwxfHNlYXJjaHwzfHxkb3VhbGElMjBjYW1lcm9vbiUyMHN0cmVldCUyMHBvcnRyYWl0fGVufDB8fHx8MTc3ODA3Mjk5NXww&ixlib=rb-4.1.0&q=85",
+      "description": "Map preview or location photo placeholder"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly use the provided JSON color tokens and typography scale.",
+    "Implement the UI with React Native standard StyleSheet or NativeWind/Tailwind depending on project setup.",
+    "Ensure all interactive elements have data-testid attributes (e.g., data-testid='fab-new-address').",
+    "Use Phosphor Icons via expo/vector-icons or phosphor-react-native.",
+    "For the address code display, you MUST use 'JetBrains Mono' font, this is crucial for the EFYL brand.",
+    "Design for high contrast—outdoor usage in sunlight is a primary use case. Minimum touch targets are 48x48dp.",
+    "Implement skeleton loaders for data fetching states instead of ActivityIndicator/spinners.",
+    "Use the provided image URLs for onboarding screens and empty states, do not use generic placeholders."
+  ]
+}
