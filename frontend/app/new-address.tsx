@@ -23,13 +23,14 @@ export default function NewAddress() {
   const [coords, setCoords] = useState<Coords | null>(null);
   const [confirmed, setConfirmed] = useState(false);
 
-  const [district, setDistrict] = useState('Bonamoussadi');
-  const [sector, setSector] = useState('F');
-  const [streetId, setStreetId] = useState('034');
-  const [houseNumber, setHouseNumber] = useState('156');
+  const [district, setDistrict] = useState('');
+  const [sector, setSector] = useState('A');
+  const [streetId, setStreetId] = useState('001');
+  const [houseNumber, setHouseNumber] = useState('001');
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [notes, setNotes] = useState('');
+  const [reverseLoading, setReverseLoading] = useState(false);
 
   const pulse = useRef(new Animated.Value(0)).current;
   const watchSub = useRef<Location.LocationSubscription | null>(null);
@@ -153,9 +154,55 @@ export default function NewAddress() {
 
   const canConfirm = !!coords && coords.accuracy <= 3.0;
 
-  const onConfirm = () => {
+  const onConfirm = async () => {
     stopMeasure();
     setConfirmed(true);
+    // Reverse geocode to pre-fill district with real neighbourhood
+    if (coords && Platform.OS !== 'web') {
+      try {
+        setReverseLoading(true);
+        const results = await Location.reverseGeocodeAsync({
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+        });
+        if (results && results[0]) {
+          const r = results[0];
+          const detected =
+            r.district || r.subregion || r.city || r.region || r.name || '';
+          if (detected) setDistrict(detected);
+          if (!houseNumber || houseNumber === '001') {
+            if (r.streetNumber) setHouseNumber(r.streetNumber.replace(/\D/g, '').padStart(3, '0').slice(-3));
+          }
+        }
+      } catch {
+        // ignore — user can fill manually
+      } finally {
+        setReverseLoading(false);
+      }
+    } else if (coords && Platform.OS === 'web') {
+      // Web fallback: use Nominatim (OpenStreetMap) reverse geocoding
+      try {
+        setReverseLoading(true);
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${coords.latitude}&lon=${coords.longitude}&zoom=16&accept-language=fr`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          const a = data.address || {};
+          const detected =
+            a.suburb || a.neighbourhood || a.city_district || a.town ||
+            a.village || a.city || a.county || a.state || '';
+          if (detected) setDistrict(detected);
+          if (a.house_number) {
+            setHouseNumber(a.house_number.replace(/\D/g, '').padStart(3, '0').slice(-3));
+          }
+        }
+      } catch {
+        // ignore
+      } finally {
+        setReverseLoading(false);
+      }
+    }
     setStep(2);
   };
 
@@ -277,6 +324,12 @@ export default function NewAddress() {
           {step === 2 && (
             <View testID="step-2">
               <Text style={styles.sectionTitle}>{t.newAddress.step2}</Text>
+              {reverseLoading && (
+                <Text style={styles.detectHint}>🌍 Détection du quartier en cours…</Text>
+              )}
+              {!!district && !reverseLoading && (
+                <Text style={styles.detectHint}>📍 Détecté automatiquement : <Text style={styles.detectBold}>{district}</Text></Text>
+              )}
               <Field label={t.newAddress.district} value={district} onChange={setDistrict} testID="field-district" />
               <Field label={t.newAddress.sector} value={sector} onChange={(v) => setSector(v.toUpperCase().slice(0, 2))} testID="field-sector" />
               <Field label={t.newAddress.street} value={streetId} onChange={setStreetId} keyboardType="number-pad" testID="field-street" />
@@ -372,4 +425,6 @@ const styles = StyleSheet.create({
   codePreviewMeta: { ...Typography.bodySm, color: Colors.textSecondary },
   reviewCard: { backgroundColor: Colors.card, padding: Spacing.lg, borderRadius: Radius.lg, marginBottom: Spacing.lg, ...Shadows.card },
   reviewLine: { ...Typography.body, color: Colors.textSecondary, marginTop: 6 },
+  detectHint: { ...Typography.bodySm, color: Colors.primary, marginBottom: Spacing.sm, fontFamily: 'DMSans_500Medium' },
+  detectBold: { fontFamily: 'DMSans_700Bold', color: Colors.primary },
 });
