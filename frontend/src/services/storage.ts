@@ -1,0 +1,95 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { AddressDTO } from './api';
+
+const KEYS = {
+  addresses: 'efyl:addresses',
+  syncQueue: 'efyl:sync_queue',
+  flags: 'efyl:flags',
+  user: 'efyl:user',
+  prefs: 'efyl:prefs',
+  onboarded: 'efyl:onboarded',
+  lastSync: 'efyl:last_sync',
+};
+
+export type SyncOp = {
+  id: string;
+  op: 'CREATE' | 'UPDATE' | 'DELETE';
+  payload: Partial<AddressDTO>;
+  createdAt: string;
+};
+
+export type Prefs = {
+  language: 'fr' | 'en';
+};
+
+export type UserState = {
+  loggedIn: boolean;
+  phone?: string;
+  userId?: string;
+};
+
+async function getJSON<T>(key: string, fallback: T): Promise<T> {
+  try {
+    const v = await AsyncStorage.getItem(key);
+    return v ? (JSON.parse(v) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+async function setJSON(key: string, value: unknown): Promise<void> {
+  await AsyncStorage.setItem(key, JSON.stringify(value));
+}
+
+export const Storage = {
+  // addresses
+  getAddresses: () => getJSON<AddressDTO[]>(KEYS.addresses, []),
+  setAddresses: (list: AddressDTO[]) => setJSON(KEYS.addresses, list),
+  upsertAddress: async (a: AddressDTO) => {
+    const list = await getJSON<AddressDTO[]>(KEYS.addresses, []);
+    const idx = list.findIndex((x) => x.address_id === a.address_id);
+    if (idx >= 0) list[idx] = a;
+    else list.unshift(a);
+    await setJSON(KEYS.addresses, list);
+    return list;
+  },
+  removeAddress: async (addressId: string) => {
+    const list = await getJSON<AddressDTO[]>(KEYS.addresses, []);
+    const next = list.filter((x) => x.address_id !== addressId);
+    await setJSON(KEYS.addresses, next);
+    return next;
+  },
+
+  // sync queue
+  getSyncQueue: () => getJSON<SyncOp[]>(KEYS.syncQueue, []),
+  enqueueSync: async (op: SyncOp) => {
+    const q = await getJSON<SyncOp[]>(KEYS.syncQueue, []);
+    q.push(op);
+    await setJSON(KEYS.syncQueue, q);
+    return q;
+  },
+  setSyncQueue: (q: SyncOp[]) => setJSON(KEYS.syncQueue, q),
+
+  // last sync
+  setLastSync: (ts: string) => AsyncStorage.setItem(KEYS.lastSync, ts),
+  getLastSync: () => AsyncStorage.getItem(KEYS.lastSync),
+
+  // prefs
+  getPrefs: () => getJSON<Prefs>(KEYS.prefs, { language: 'fr' }),
+  setPrefs: (p: Prefs) => setJSON(KEYS.prefs, p),
+
+  // user
+  getUser: () => getJSON<UserState>(KEYS.user, { loggedIn: false }),
+  setUser: (u: UserState) => setJSON(KEYS.user, u),
+
+  // onboarding flag
+  isOnboarded: async () => (await AsyncStorage.getItem(KEYS.onboarded)) === '1',
+  markOnboarded: () => AsyncStorage.setItem(KEYS.onboarded, '1'),
+  resetOnboarded: () => AsyncStorage.removeItem(KEYS.onboarded),
+
+  clearAll: async () => {
+    await AsyncStorage.multiRemove(Object.values(KEYS));
+  },
+};
+
+export const StorageKeys = KEYS;

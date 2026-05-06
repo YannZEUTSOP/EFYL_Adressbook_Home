@@ -1,0 +1,46 @@
+{
+  "summary": "First MVP review of EFYL Digital Address Book (Expo RN + FastAPI + MongoDB). Backend: 14/14 pytest tests passed (100%) covering health, addresses CRUD, sync bulk, GPS verify (close & far), nearby, and mock OTP flows. Frontend: All 12+ critical flows verified end-to-end on mobile viewport (390x844) — onboarding (FR default, FR/EN toggle works, Skip), home with 5 seeded addresses (Marie Nkomo, Boutique Chez Tonton, etc.), JetBrains Mono codes, accuracy pills, search filter (typing 'Marie' filters list), FAB → new-address wizard step 1 with Mesurer la Porte, address card → detail with GPS & 4 action tiles, QR Code tile renders SVG QR + share buttons, all 4 bottom tabs (Home/Scan/Map/Profile) work, Map shows pseudo-canvas + 5 pins + list, Scan tab shows web fallback + Demo Import button which navigates to address detail, Profile shows Mode invité + GU avatar + 5 adresses + FR/EN language toggle that flips Home title to 'Address Book', Synchroniser maintenant, Supprimer mes données, 'EFYL Address Book — v1.0.0 (MVP)', Login screen with phone input + Send code + Continue as guest. App is in solid MVP state.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "all", "issue": "Pydantic v2 deprecation: server.py uses payload.dict() (deprecated) instead of payload.model_dump(). Works fine but emits warnings."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "new-address", "issues": ["Step indicator shows numbered circles (1 2 3) rather than literal '1/3' text — functionally equivalent but worth confirming with PM."]}
+    ],
+    "react_native_issues": [
+      {"component": "(tabs)/_layout.tsx", "issue": "Console warning: '[Layout children]: Too many screens defined. Route \"sync\" is extraneous.' — there is a /sync route defined but not used by the tabs layout. Should be removed or registered properly."},
+      {"component": "global", "issue": "Multiple deprecation warnings: \"shadow*\" style props are deprecated, use \"boxShadow\". Cosmetic but should be migrated for future RN compatibility."},
+      {"component": "global", "issue": "Warning: 'Animated: useNativeDriver is not supported' on web. Expected on web preview; consider Platform.OS guard or false on web to silence."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_efyl_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Remove the extraneous 'sync' route or remove the warning by aligning the (tabs) layout children with the actual screens.",
+    "(Optional) Migrate Pydantic v1 .dict() calls in server.py to .model_dump() to silence deprecation warnings.",
+    "(Optional) Replace shadow* style props with boxShadow for future RN compatibility.",
+    "No blocking bugs — MVP is ready for investor demo flow."
+  ],
+  "critical_code_review_comments": [
+    "server.py is well-structured (~290 lines), uses async motor, env vars (MONGO_URL, DB_NAME), Pydantic models, and proper HTTPException codes. _id is excluded via projection {'_id': 0} and clean() helper.",
+    "Frontend uses EXPO_PUBLIC_BACKEND_URL correctly via process.env. testID coverage is comprehensive on every interactive element (tabs, FAB, search, address-card-*, pin-*, profile-lang-*, send-otp-btn, guest-btn, etc.).",
+    "Mock OTP endpoint returns demo_code=123456 in the response body (acceptable for MVP demo, but in production this should not echo the code)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/__init__.py (new)",
+    "/app/backend/tests/test_efyl_api.py (new)"
+  ],
+  "success_rate": {"backend": "100% (14/14)", "frontend": "100% (all reviewed flows pass)"},
+  "seed_data_creation": "No persistent seed data added on backend. The 5 demo addresses are seeded client-side via AsyncStorage on first launch (utils/demoData.ts). Test address TEST-A001-X001 + TEST-SYNC-* were created during pytest and cleaned up afterwards.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Frontend uses EXPO_PUBLIC_BACKEND_URL (note the PUBLIC prefix). Each new browser session starts with empty AsyncStorage so the app shows onboarding first — always click [data-testid=\"onboarding-skip-btn\"] before testing tabs. Map pin testIDs follow pattern pin-{address_id} (not map-pin-*). Scan demo import button testID is demo-import-btn (not scan-demo-import-btn). Profile language testIDs are profile-lang-fr / profile-lang-en (separate from onboarding's lang-fr-btn / lang-en-btn). Backend test suite at /app/backend/tests/test_efyl_api.py is reusable for regression.",
+  "rca_of_issue": "N/A — no bugs found."
+}
