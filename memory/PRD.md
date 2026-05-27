@@ -1,52 +1,49 @@
-# EFYL Digital Address Book — PRD
+# EFYL Digital Address Book — PRD v2.0.0
 
 ## Product
-EFYL GmbH digital addressing MVP for Sub-Saharan Africa, piloted in Bonamoussadi (Douala, Cameroun). Allows residents to measure their doorstep with sub-meter GPS, generate a standardized address code, share it via QR/WhatsApp/SMS, and view all addresses on an offline-capable map.
+Digital addressing platform for Sub-Saharan Africa with full household survey capability. Pilot Bonamoussadi, Douala, Cameroon.
 
-## Tech Stack
-- Frontend: Expo (SDK 54) + expo-router file-based navigation, TypeScript, react-native-qrcode-svg, expo-camera (mobile), expo-location, AsyncStorage
-- Backend: FastAPI + MongoDB (motor)
-- Fonts: DM Sans (UI) + JetBrains Mono (address codes only)
-- Color system: Deep Forest Green #0D5C3A + Warm Amber #E8851A on warm off-white #F8F6F0
+## v2.0 — Major Release (3 weeks of features in one)
 
-## Architecture
-- 12 screens via expo-router (splash, onboarding, 4 tabs, new-address wizard, address detail, qr, verify, login, import)
-- Offline-first: all CRUD writes go to AsyncStorage first, queued in `efyl:sync_queue`, flushed via POST /api/sync
-- Bilingual FR (default) / EN with instant language switch
-- Demo data seeded on first launch (5 addresses across Bonamoussadi, Akwa, Makepe)
+### Week 1 Features (Field-ready)
+1. **Real Twilio SMS OTP** (env-toggleable). Set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE` to enable; falls back to mock `123456` otherwise.
+2. **Real Leaflet/OpenStreetMap map** via WebView component — works on iOS/Android/Web. Plan + Satellite layers (Esri Imagery).
+3. **NetInfo auto-sync** — flushes sync queue automatically when network returns.
+4. **Save Anyway override** — after 120s without 3m precision, button appears; address saved with `low_accuracy:true` flag.
 
-## Backend Endpoints (all prefixed `/api`)
-- GET `/health`
-- POST `/addresses` — upsert by (address_id, owner_id)
-- GET `/addresses?owner_id=&q=` — list / search
-- GET `/addresses/{address_id}` — single (falls back to public)
-- PUT `/addresses/{address_id}` — partial update
-- DELETE `/addresses/{address_id}`
-- POST `/sync` — bulk push pending operations
-- POST `/verify` — Haversine distance check; flags if > 10 m, marks verified if ≤ 10 m
-- GET `/addresses-nearby?lat=&lng=&radius_km=`
-- POST `/auth/otp/request` — **MOCKED** (returns `demo_code: "123456"`)
-- POST `/auth/otp/verify` — accepts `123456`
+### Week 2 Features (Survey)
+5. **Multi-step guided survey wizard** — 21 steps, one question at a time, per-question validation.
+6. **Per-person records** — name, age, gender, education, profession, frequented place. Add one by one.
+7. **Commerce sheet** — name, owner, phone, products, weekday/Sat/Sun hours.
+8. **Full household conditions** — total persons, income source/level, phones, internet, electricity, water, toilets, kitchen, rooms, floors, walls, windows, roof, vehicles.
 
-## Key Features Delivered
-- ✅ GPS measurement wizard with animated pulsing accuracy ring (red/yellow/green) and 3.0 m save threshold
-- ✅ QR code generation + scanning (mobile) / web fallback demo import
-- ✅ Address detail with directions deep-link, share, QR display, report inaccuracy
-- ✅ Pseudo-map view with brand-coloured pins (verified=green, unverified=amber, flagged=red)
-- ✅ Profile with sync queue badge, language toggle, full data wipe
-- ✅ Phone-OTP login (mock) + guest mode
-- ✅ Deep-link import handler (`/import?id=...`)
+### Week 3 Features (Pro-grade)
+9. **Compass / azimuth capture** — expo-sensors Magnetometer, locks N/E/S/W direction.
+10. **Photo capture** — inline CameraView modal, base64 storage.
+11. **Satellite GPS correction** — draggable orange pin on Esri satellite tiles. Stores both raw + corrected coords.
+12. **CSV/JSON export endpoints** — `/api/export/csv` and `/api/export/json` for partner orgs.
 
-## Mocked / Deferred for v1.0.0 MVP
-- Twilio SMS OTP (using mock 123456 for investor demo)
-- Mapbox / OSM real tiles (custom canvas + pins used)
-- Native push for sync notifications
+## Backend (FastAPI + MongoDB + Twilio)
+- 17 endpoints under `/api/*`
+- Collections: addresses, surveys, flags, users, otp_codes, otp_attempts
+- Rate limiting: 3 OTP requests / 10 min
+- Hashed OTP storage (SHA-256)
+- CSV header has 50+ columns for analytics
 
-## Test Credentials
-None — guest mode is default. Login uses any phone + code `123456`.
+## Frontend (Expo SDK 54 + React Native 0.81)
+- 13 screens (added /survey/[id])
+- WebView+Leaflet cross-platform map
+- Bilingual FR/EN (~250 strings)
+- AsyncStorage offline-first + dual sync queues (addresses + surveys)
+- NetInfo connectivity listener
 
-## Next Steps (post-MVP)
-- Real Twilio + remove `demo_code` field from API response
-- react-native-maps with offline tile cache for Douala
-- Verified Contributor gamification badge
-- Municipality dashboard (web)
+## Tested
+- 28/28 backend tests passing
+- All frontend flows verified
+
+## Mocked / Pending
+- Twilio: env-toggleable. Provide credentials via .env to enable real SMS.
+- Photo capture: works on mobile (Expo Go / native). Web fallback shows "needs mobile app".
+
+## Test credentials
+See /app/memory/test_credentials.md
