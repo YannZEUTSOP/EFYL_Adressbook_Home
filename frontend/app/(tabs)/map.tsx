@@ -1,79 +1,92 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Platform } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Colors, Radius, Shadows, Spacing, Typography } from '../../src/theme';
 import { useApp } from '../../src/contexts/AppContext';
+import { LeafletMap, LeafletPin } from '../../src/components/LeafletMap';
 import { Pill } from '../../src/components/Pill';
 
 export default function MapTab() {
-  const { t, addresses } = useApp();
+  const { t, addresses, refreshAddresses } = useApp();
   const router = useRouter();
+  const [satellite, setSatellite] = useState(false);
 
-  // Compute simple bounds for visualization
-  const items = useMemo(() => addresses.slice(0, 30), [addresses]);
-  const bounds = useMemo(() => {
-    if (!items.length) return { minLat: 4.05, maxLat: 4.13, minLng: 9.72, maxLng: 9.82 };
-    const lats = items.map((a) => a.latitude);
-    const lngs = items.map((a) => a.longitude);
-    let minLat = Math.min(...lats), maxLat = Math.max(...lats);
-    let minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
-    if (maxLat - minLat < 0.005) { minLat -= 0.003; maxLat += 0.003; }
-    if (maxLng - minLng < 0.005) { minLng -= 0.003; maxLng += 0.003; }
-    return { minLat, maxLat, minLng, maxLng };
-  }, [items]);
+  useFocusEffect(React.useCallback(() => { refreshAddresses(); }, [refreshAddresses]));
 
-  const project = (lat: number, lng: number) => {
-    const x = ((lng - bounds.minLng) / (bounds.maxLng - bounds.minLng)) * 100;
-    const y = (1 - (lat - bounds.minLat) / (bounds.maxLat - bounds.minLat)) * 100;
-    return { x, y };
-  };
+  const pins: LeafletPin[] = useMemo(
+    () =>
+      addresses.map((a) => ({
+        id: a.address_id,
+        lat: a.latitude,
+        lng: a.longitude,
+        color:
+          a.flag_count >= 3 ? '#EF4444' :
+          a.low_accuracy ? '#9CA3AF' :
+          a.verified ? '#22C55E' : '#F59E0B',
+        title: `${a.contact_name || a.district} — ${a.address_id}`,
+      })),
+    [addresses]
+  );
+
+  const { centerLat, centerLng, zoom } = useMemo(() => {
+    if (!addresses.length) return { centerLat: 4.0951, centerLng: 9.7679, zoom: 13 };
+    const lats = addresses.map((a) => a.latitude);
+    const lngs = addresses.map((a) => a.longitude);
+    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+    const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+    const centerLat = (minLat + maxLat) / 2;
+    const centerLng = (minLng + maxLng) / 2;
+    const spread = Math.max(maxLat - minLat, maxLng - minLng);
+    const zoom = spread < 0.01 ? 16 : spread < 0.1 ? 13 : spread < 1 ? 10 : 6;
+    return { centerLat, centerLng, zoom };
+  }, [addresses]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']} testID="map-screen">
       <View style={styles.header}>
-        <Text style={styles.title}>{t.map.title}</Text>
-        <Text style={styles.subtitle}>{addresses.length} {t.map.myAddresses}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>{t.map.title}</Text>
+          <Text style={styles.subtitle}>{addresses.length} {t.map.myAddresses}</Text>
+        </View>
+        <View style={styles.layerToggle}>
+          <TouchableOpacity
+            onPress={() => setSatellite(false)}
+            style={[styles.layerChip, !satellite && styles.layerActive]}
+            testID="map-streets-btn"
+          >
+            <Ionicons name="map-outline" size={14} color={!satellite ? Colors.white : Colors.textSecondary} />
+            <Text style={[styles.layerTxt, !satellite && styles.layerTxtActive]}>{t.map.streets}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setSatellite(true)}
+            style={[styles.layerChip, satellite && styles.layerActive]}
+            testID="map-sat-btn"
+          >
+            <Ionicons name="globe-outline" size={14} color={satellite ? Colors.white : Colors.textSecondary} />
+            <Text style={[styles.layerTxt, satellite && styles.layerTxtActive]}>{t.map.sat}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <View style={styles.mapWrap} testID="map-canvas">
-        <View style={styles.mapBg}>
-          {/* faux map grid */}
-          {[...Array(8)].map((_, i) => (
-            <View key={`h${i}`} style={[styles.gridLine, { top: `${(i + 1) * 11}%`, width: '100%', height: 1 }]} />
-          ))}
-          {[...Array(8)].map((_, i) => (
-            <View key={`v${i}`} style={[styles.gridLine, { left: `${(i + 1) * 11}%`, width: 1, height: '100%' }]} />
-          ))}
-          {items.map((a) => {
-            const { x, y } = project(a.latitude, a.longitude);
-            const color = a.flag_count >= 3 ? Colors.error : a.verified ? Colors.success : Colors.warning;
-            return (
-              <TouchableOpacity
-                key={a.address_id}
-                onPress={() => router.push(`/address/${encodeURIComponent(a.address_id)}`)}
-                style={[styles.pin, { left: `${x}%`, top: `${y}%`, backgroundColor: color }]}
-                testID={`pin-${a.address_id}`}
-              >
-                <Ionicons name="location" size={14} color={Colors.white} />
-              </TouchableOpacity>
-            );
-          })}
-          {!items.length && (
-            <View style={styles.mapEmpty}>
-              <Ionicons name="map-outline" size={56} color={Colors.textTertiary} />
-              <Text style={styles.mapEmptyTxt}>Aucune adresse à afficher</Text>
-            </View>
-          )}
-        </View>
+      <View style={styles.mapBox} testID="real-map">
+        <LeafletMap
+          centerLat={centerLat}
+          centerLng={centerLng}
+          zoom={zoom}
+          pins={pins}
+          satellite={satellite}
+          onPinTap={(id) => router.push(`/address/${encodeURIComponent(id)}`)}
+          style={{ height: '100%' }}
+        />
       </View>
 
       <Text style={styles.listTitle}>{t.map.myAddresses}</Text>
       <FlatList
-        data={items}
+        data={addresses.slice(0, 50)}
         keyExtractor={(it) => it.address_id}
-        contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 100 }}
+        contentContainerStyle={{ paddingHorizontal: Spacing.lg, paddingBottom: 120 }}
         renderItem={({ item }) => {
           const variant = item.accuracy_meters <= 1.0 ? 'green' : item.accuracy_meters <= 3.0 ? 'yellow' : 'red';
           return (
@@ -98,16 +111,16 @@ export default function MapTab() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  header: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm },
+  header: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm, flexDirection: 'row', alignItems: 'center' },
   title: { ...Typography.h1 },
   subtitle: { ...Typography.bodySm, color: Colors.textSecondary, marginTop: 2 },
-  mapWrap: { margin: Spacing.lg, borderRadius: Radius.xl, overflow: 'hidden', height: 260, ...Shadows.card },
-  mapBg: { flex: 1, backgroundColor: '#E7EFE7', position: 'relative' },
-  gridLine: { position: 'absolute', backgroundColor: 'rgba(13,92,58,0.06)' },
-  pin: { position: 'absolute', width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: Colors.white, transform: [{ translateX: -12 }, { translateY: -12 }], ...Shadows.card },
-  mapEmpty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  mapEmptyTxt: { ...Typography.body, color: Colors.textSecondary },
-  listTitle: { ...Typography.h3, paddingHorizontal: Spacing.lg, marginTop: 0 },
+  layerToggle: { flexDirection: 'row', backgroundColor: Colors.surface, borderRadius: Radius.pill, padding: 3 },
+  layerChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: Radius.pill },
+  layerActive: { backgroundColor: Colors.primary },
+  layerTxt: { ...Typography.caption, color: Colors.textSecondary, fontFamily: 'DMSans_500Medium' },
+  layerTxtActive: { color: Colors.white },
+  mapBox: { margin: Spacing.lg, marginBottom: Spacing.sm, borderRadius: Radius.lg, overflow: 'hidden', height: 320, ...Shadows.card, backgroundColor: '#E7EFE7' },
+  listTitle: { ...Typography.h3, paddingHorizontal: Spacing.lg, marginVertical: Spacing.sm },
   row: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.card, padding: Spacing.md, borderRadius: Radius.lg, marginBottom: 10, ...Shadows.card },
   rowName: { ...Typography.label, color: Colors.textPrimary },
   rowCode: { fontFamily: 'JetBrainsMono_700Bold', fontSize: 12, color: Colors.primary, marginTop: 2 },

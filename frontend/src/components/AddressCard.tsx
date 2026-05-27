@@ -45,10 +45,20 @@ export const AddressCard: React.FC<{
         <View style={styles.right}>
           <Pill variant={v} label={`${addr.accuracy_meters.toFixed(1)}m`} />
           <View style={{ height: 6 }} />
-          <Pill
-            variant={status === 'verified' ? 'green' : status === 'flagged' ? 'red' : 'yellow'}
-            label={status === 'verified' ? '✓' : status === 'flagged' ? '⚠' : '•'}
-          />
+          {addr.low_accuracy ? (
+            <Pill variant="red" label="⚠" />
+          ) : (
+            <Pill
+              variant={status === 'verified' ? 'green' : status === 'flagged' ? 'red' : 'yellow'}
+              label={status === 'verified' ? '✓' : status === 'flagged' ? '⚠' : '•'}
+            />
+          )}
+          {addr.has_survey && (
+            <>
+              <View style={{ height: 4 }} />
+              <Pill variant="green" label="📋" />
+            </>
+          )}
         </View>
       </View>
     </TouchableOpacity>

@@ -29,7 +29,9 @@ export default function Login() {
     setLoading(true);
     try {
       const r = await Api.otpRequest(phone.trim());
+      // If real Twilio, no demo_code is returned
       setDemoCode(r.demo_code || '');
+      setIsRealSms(r.method === 'twilio');
       setStep('otp');
       setResendIn(60);
     } catch (e: any) {
@@ -107,9 +109,11 @@ export default function Login() {
                 placeholder="••••••"
                 placeholderTextColor={Colors.textTertiary}
               />
-              {!!demoCode && (
+              {isRealSms ? (
+                <Text style={[styles.demo, { color: Colors.success }]}>📱 {t.auth.realSms}</Text>
+              ) : !!demoCode ? (
                 <Text style={styles.demo}>{t.auth.demoNote} ({demoCode})</Text>
-              )}
+              ) : null}
               <View style={{ height: Spacing.md }} />
               <Button label={t.auth.verify} onPress={verify} loading={loading} testID="verify-otp-btn" />
               <TouchableOpacity onPress={resendIn ? undefined : send} style={{ alignSelf: 'center', marginTop: Spacing.md }}>

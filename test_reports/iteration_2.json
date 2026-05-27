@@ -1,0 +1,41 @@
+{
+  "summary": "EFYL Address Book v2.0.0 — both backend and frontend tested end-to-end. Backend: 28/28 pytest tests pass (100%), including new v2 features (low_accuracy/azimuth/lat_corrected fields on addresses, household survey with persons[] + commerce, GET/POST surveys, CSV export with all v2 columns, JSON export with nested survey, OTP rate-limit 429 after 4th request, OTP code single-use 401 on reuse, has_survey propagation on address GET, sync, verify with Haversine, delete cascade removes linked survey, /api/health returns twilio_enabled=false). Frontend (mobile viewport 390x844 via Expo web preview): app loads through splash/onboarding/tabs OK, Home shows the 5 demo addresses, Map tab renders real Leaflet WebView (2 iframes with OSM tiles) and has Plan/Satellite toggle buttons (map-streets-btn / map-sat-btn), Profile tab exposes export-csv-btn, export-json-btn, sync-now-btn plus FR/EN switch and online dot, Address detail shows survey-cta which opens /survey/[id] with progress bar 'Question 1 / 21' and survey-back/next controls, New Address wizard now shows 5 steps (badges 1 2 3 4 5) with step 1 'Mesurer la Porte'. Backend JSON export returned 200 with items[].survey via frontend fetch. No red screens, no React Native deprecated packages detected (no expo-av, expo-barcode-scanner, expo-background-fetch). Expo reports several package version mismatches (warnings, app still works) — reported as minor.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "global", "issues": ["Console warnings: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' — multiple style files still use shadow* on web. Cosmetic only.", "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'."]}
+    ],
+    "react_native_issues": [
+      {"component": "package.json", "issue": "Expo CLI reports version mismatches for installed Expo-managed packages. Expected by current expo SDK: @react-native-community/netinfo 11.4.1 (installed 12.0.1), expo-file-system ~19.0.22 (installed 56.0.7), expo-image-manipulator ~14.0.8 (installed 56.0.15), expo-sensors ~15.0.8 (installed 56.0.5), react-native-webview 13.15.0 (installed 13.16.1). App still bundles and runs on web, but may misbehave on native builds. Reference: /app/frontend/package.json"}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_efyl_v2.py",
+    "/app/backend/tests/test_efyl_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Recommend (low priority) running `npx expo install --check` and aligning the listed packages with versions expected by the current Expo SDK to avoid surprises on a native build.",
+    "Cosmetic: replace `shadow*` style props with `boxShadow` and `props.pointerEvents` with `style.pointerEvents` to silence web console warnings."
+  ],
+  "critical_code_review_comments": [
+    "/app/backend/server.py is ~620 lines and still readable; no urgent split needed.",
+    "MongoDB _id correctly excluded from all GET/list/export responses (verified by tests).",
+    "OTP code is properly deleted on successful verify (single-use enforced — verified)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_efyl_v2.py (new — v2 features regression suite)",
+    "/app/backend/tests/test_efyl_api.py (made OTP phone unique per run to keep rate-limit window from leaking between regression runs; no product change)"
+  ],
+  "success_rate": {"backend": "100% (28/28)", "frontend": "100% of v2 flows reachable and rendered"},
+  "seed_data_creation": "Tests create and tear down TEST-X001-X001 address + survey and TEST-SYNC-V2-001; OTP test phones are randomized per run. No persistent test data left behind.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend v2 tests live in /app/backend/tests/test_efyl_v2.py. Legacy v1 tests are in test_efyl_api.py. Run `pytest backend/tests/ -v --junitxml=/app/test_reports/pytest/pytest_results.xml`. Frontend public URL: https://efyl-address-book.preview.emergentagent.com. Key testIDs for UI regression: home-screen, address-card-<ID>, tab-home/scan/map/profile, map-streets-btn, map-sat-btn, real-map, profile-screen, export-csv-btn, export-json-btn, sync-now-btn, survey-cta, survey-screen, survey-back-btn, survey-next-btn, new-address-screen, step-1..5, measure-btn. Onboarding may show first — click [data-testid=onboarding-skip-btn]. survey-cta needs scroll_into_view_if_needed before clicking.",
+  "rca_of_issue": "N/A — no bugs found."
+}

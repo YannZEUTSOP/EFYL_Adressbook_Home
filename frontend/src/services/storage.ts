@@ -1,9 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { AddressDTO } from './api';
+import type { HouseholdSurvey } from '../types/survey';
 
 const KEYS = {
   addresses: 'efyl:addresses',
   syncQueue: 'efyl:sync_queue',
+  surveyQueue: 'efyl:survey_queue',
+  surveys: 'efyl:surveys',
   flags: 'efyl:flags',
   user: 'efyl:user',
   prefs: 'efyl:prefs',
@@ -15,6 +18,13 @@ export type SyncOp = {
   id: string;
   op: 'CREATE' | 'UPDATE' | 'DELETE';
   payload: Partial<AddressDTO>;
+  createdAt: string;
+};
+
+export type SurveySyncOp = {
+  id: string;
+  op: 'UPSERT' | 'DELETE';
+  payload: HouseholdSurvey | { address_id: string };
   createdAt: string;
 };
 
@@ -42,7 +52,6 @@ async function setJSON(key: string, value: unknown): Promise<void> {
 }
 
 export const Storage = {
-  // addresses
   getAddresses: () => getJSON<AddressDTO[]>(KEYS.addresses, []),
   setAddresses: (list: AddressDTO[]) => setJSON(KEYS.addresses, list),
   upsertAddress: async (a: AddressDTO) => {
@@ -60,7 +69,7 @@ export const Storage = {
     return next;
   },
 
-  // sync queue
+  // address sync queue
   getSyncQueue: () => getJSON<SyncOp[]>(KEYS.syncQueue, []),
   enqueueSync: async (op: SyncOp) => {
     const q = await getJSON<SyncOp[]>(KEYS.syncQueue, []);
@@ -70,7 +79,28 @@ export const Storage = {
   },
   setSyncQueue: (q: SyncOp[]) => setJSON(KEYS.syncQueue, q),
 
-  // last sync
+  // survey local cache + queue
+  getSurveys: () => getJSON<Record<string, HouseholdSurvey>>(KEYS.surveys, {}),
+  upsertSurvey: async (s: HouseholdSurvey) => {
+    const map = await getJSON<Record<string, HouseholdSurvey>>(KEYS.surveys, {});
+    map[s.address_id] = s;
+    await setJSON(KEYS.surveys, map);
+  },
+  removeSurvey: async (addressId: string) => {
+    const map = await getJSON<Record<string, HouseholdSurvey>>(KEYS.surveys, {});
+    delete map[addressId];
+    await setJSON(KEYS.surveys, map);
+  },
+  getSurveyQueue: () => getJSON<SurveySyncOp[]>(KEYS.surveyQueue, []),
+  enqueueSurveySync: async (op: SurveySyncOp) => {
+    const q = await getJSON<SurveySyncOp[]>(KEYS.surveyQueue, []);
+    q.push(op);
+    await setJSON(KEYS.surveyQueue, q);
+    return q;
+  },
+  setSurveyQueue: (q: SurveySyncOp[]) => setJSON(KEYS.surveyQueue, q),
+
+  // sync timestamps
   setLastSync: (ts: string) => AsyncStorage.setItem(KEYS.lastSync, ts),
   getLastSync: () => AsyncStorage.getItem(KEYS.lastSync),
 
@@ -82,7 +112,7 @@ export const Storage = {
   getUser: () => getJSON<UserState>(KEYS.user, { loggedIn: false }),
   setUser: (u: UserState) => setJSON(KEYS.user, u),
 
-  // onboarding flag
+  // onboarding
   isOnboarded: async () => (await AsyncStorage.getItem(KEYS.onboarded)) === '1',
   markOnboarded: () => AsyncStorage.setItem(KEYS.onboarded, '1'),
   resetOnboarded: () => AsyncStorage.removeItem(KEYS.onboarded),

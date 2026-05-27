@@ -1,3 +1,5 @@
+import type { HouseholdSurvey } from '../types/survey';
+
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -28,11 +30,20 @@ export type AddressDTO = {
   owner_id?: string;
   verified: boolean;
   flag_count: number;
+  low_accuracy?: boolean;
+  azimuth_degrees?: number | null;
+  photo_base64?: string | null;
+  lat_raw?: number | null;
+  lng_raw?: number | null;
+  lat_corrected?: number | null;
+  lng_corrected?: number | null;
+  has_survey?: boolean;
   created_at: string;
 };
 
 export const Api = {
-  health: () => request<{ status: string }>('/health'),
+  base: () => BASE,
+  health: () => request<{ status: string; twilio_enabled?: boolean }>('/health'),
   listAddresses: (ownerId = 'guest', q?: string) =>
     request<AddressDTO[]>(
       `/addresses?owner_id=${encodeURIComponent(ownerId)}${q ? `&q=${encodeURIComponent(q)}` : ''}`
@@ -68,7 +79,7 @@ export const Api = {
       }),
     }),
   otpRequest: (phone: string) =>
-    request<{ sent: boolean; demo_code: string }>('/auth/otp/request', {
+    request<{ sent: boolean; method: string; demo_code?: string }>('/auth/otp/request', {
       method: 'POST',
       body: JSON.stringify({ phone }),
     }),
@@ -77,4 +88,16 @@ export const Api = {
       method: 'POST',
       body: JSON.stringify({ phone, code }),
     }),
+  // Surveys
+  saveSurvey: (s: HouseholdSurvey) =>
+    request<HouseholdSurvey>('/surveys', { method: 'POST', body: JSON.stringify(s) }),
+  getSurvey: (addressId: string, ownerId = 'guest') =>
+    request<HouseholdSurvey>(`/surveys/${encodeURIComponent(addressId)}?owner_id=${encodeURIComponent(ownerId)}`),
+  deleteSurvey: (addressId: string, ownerId = 'guest') =>
+    request<{ deleted: number }>(`/surveys/${encodeURIComponent(addressId)}?owner_id=${encodeURIComponent(ownerId)}`, { method: 'DELETE' }),
+  // Export URLs (used by Linking)
+  exportCsvUrl: (ownerId?: string) =>
+    `${BASE}/api/export/csv${ownerId ? `?owner_id=${encodeURIComponent(ownerId)}` : ''}`,
+  exportJsonUrl: (ownerId?: string) =>
+    `${BASE}/api/export/json${ownerId ? `?owner_id=${encodeURIComponent(ownerId)}` : ''}`,
 };

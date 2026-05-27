@@ -11,7 +11,9 @@ BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL",
 API = f"{BASE_URL}/api"
 
 TEST_ADDRESS_ID = "TEST-A001-X001"
-TEST_PHONE = "+237600000001"
+import time as _t
+_RID = str(int(_t.time()))[-6:]
+TEST_PHONE = f"+2376111{_RID}"
 
 
 @pytest.fixture(scope="session")

@@ -37,6 +37,7 @@ export default function RootLayout() {
           <Stack.Screen name="address/[id]" />
           <Stack.Screen name="qr/[id]" />
           <Stack.Screen name="verify/[id]" />
+          <Stack.Screen name="survey/[id]" />
           <Stack.Screen name="import" />
         </Stack>
       </AppProvider>
