@@ -3,6 +3,21 @@
 ## Product
 Digital addressing platform for Sub-Saharan Africa with full household survey capability. Pilot Bonamoussadi, Douala, Cameroon.
 
+## v2.1 — Bifurcation Foyer/Commerce + Carte communautaire (Sprint S4)
+
+### Nouvelles fonctionnalités
+13. **Bifurcation Foyer/Commerce** — la 1ère étape de l'enquête demande "Foyer ou Commerce ?" puis adapte les questions:
+    - **Foyer**: 19 étapes (privées, `is_commerce=false`, visibles uniquement par le créateur).
+    - **Commerce**: 3 étapes (publiques, `is_commerce=true`, visibles par toute la communauté).
+14. **Endpoint public `/api/commerces`** — retourne tous les commerces partagés par n'importe quel utilisateur.
+15. **Carte communautaire** — toggle dans l'onglet Carte qui affiche/masque les pins oranges 🏪 des commerces partagés.
+16. **Section Accueil "Commerces de la communauté"** — liste sous "Mes adresses" avec tag Public.
+17. **Badges Commerce** — pastilles visuelles (orange storefront) sur cartes d'adresse et page détail.
+
+### Livrables QA
+- `/app/memory/COMPREHENSIVE_PROMPT_FR_EN.md` — Description complète bilingue du produit (vision, fonctionnalités, architecture, modèle de données, roadmap, KPIs).
+- `/app/memory/EFYL_QA_Test_Script_FR_EN.xlsx` — 51 scénarios FR + 51 EN avec colonnes ID/Module/Étape/Action/Résultat attendu/Résultat obtenu/Statut/Sévérité/Commentaires.
+
 ## v2.0 — Major Release (3 weeks of features in one)
 
 ### Week 1 Features (Field-ready)

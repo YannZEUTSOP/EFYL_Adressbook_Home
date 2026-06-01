@@ -9,33 +9,49 @@ import { Button } from '../../src/components/Button';
 import {
   HouseholdSurvey, emptySurvey, emptyPerson, emptyCommerce,
   IncomeLevel, Utility, Toilets, KitchenPosition, WallMaterial, RoofMaterial,
-  Education, Gender,
+  Education, Gender, SurveyType,
 } from '../../src/types/survey';
 
 type StepKey =
-  | 'intro' | 'totalPersons' | 'income' | 'incomeLevel'
+  | 'typeChoice' | 'intro' | 'totalPersons' | 'income' | 'incomeLevel'
   | 'phones' | 'internet' | 'electricity' | 'water'
   | 'toilets' | 'kitchen' | 'rooms' | 'floors'
   | 'walls' | 'windows' | 'roof'
-  | 'vehicles' | 'isCommerce' | 'commerce'
+  | 'vehicles' | 'commerce'
   | 'personsIntro' | 'personEntry'
   | 'summary';
+
+const HOUSEHOLD_ORDER: StepKey[] = [
+  'typeChoice', 'intro', 'totalPersons', 'income', 'incomeLevel',
+  'phones', 'internet', 'electricity', 'water',
+  'toilets', 'kitchen', 'rooms', 'floors',
+  'walls', 'windows', 'roof', 'vehicles',
+  'personsIntro', 'personEntry', 'summary',
+];
+
+const COMMERCE_ORDER: StepKey[] = [
+  'typeChoice', 'commerce', 'summary',
+];
 
 export default function SurveyScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { t, saveSurvey, getLocalSurvey, deleteSurvey } = useApp();
+  const { t, saveSurvey, getLocalSurvey } = useApp();
   const addressId = decodeURIComponent(String(id || ''));
 
   const [survey, setSurvey] = useState<HouseholdSurvey>(emptySurvey(addressId));
-  const [stepKey, setStepKey] = useState<StepKey>('intro');
+  const [stepKey, setStepKey] = useState<StepKey>('typeChoice');
   const [personIdx, setPersonIdx] = useState<number>(0);
   const [errorMsg, setErrorMsg] = useState<string>('');
 
   useEffect(() => {
     (async () => {
       const existing = await getLocalSurvey(addressId);
-      if (existing) setSurvey(existing);
+      if (existing) {
+        setSurvey(existing);
+        // If resuming, skip type choice & jump to commerce or intro accordingly
+        setStepKey(existing.survey_type === 'commerce' ? 'commerce' : 'intro');
+      }
     })();
   }, [addressId, getLocalSurvey]);
 
@@ -60,20 +76,26 @@ export default function SurveyScreen() {
     });
   };
 
-  // Order of steps (skip commerce if not is_commerce)
-  const ORDER: StepKey[] = [
-    'intro', 'totalPersons', 'income', 'incomeLevel',
-    'phones', 'internet', 'electricity', 'water',
-    'toilets', 'kitchen', 'rooms', 'floors',
-    'walls', 'windows', 'roof', 'vehicles',
-    'isCommerce', 'commerce', 'personsIntro', 'personEntry', 'summary',
-  ];
-
-  const idx = ORDER.indexOf(stepKey);
+  const ORDER: StepKey[] = survey.survey_type === 'commerce' ? COMMERCE_ORDER : HOUSEHOLD_ORDER;
+  const idx = Math.max(0, ORDER.indexOf(stepKey));
   const totalSteps = ORDER.length;
+
+  const chooseType = (type: SurveyType) => {
+    setSurvey((s) => ({
+      ...s,
+      survey_type: type,
+      is_commerce: type === 'commerce',
+      commerce: type === 'commerce' ? (s.commerce || emptyCommerce()) : null,
+    }));
+    // Move to next step in the chosen order
+    const order = type === 'commerce' ? COMMERCE_ORDER : HOUSEHOLD_ORDER;
+    setStepKey(order[1]);
+    setErrorMsg('');
+  };
 
   const validate = (): boolean => {
     setErrorMsg('');
+    if (stepKey === 'typeChoice') return true;
     if (stepKey === 'totalPersons') {
       if (!Number.isFinite(survey.total_persons) || survey.total_persons < 1) {
         setErrorMsg(t.survey.errPositive);
@@ -106,22 +128,16 @@ export default function SurveyScreen() {
 
   const goNext = () => {
     if (!validate()) return;
-    let next = ORDER[idx + 1];
-    // Skip commerce if not commerce
-    if (next === 'commerce' && !survey.is_commerce) next = 'personsIntro';
-    setStepKey(next);
+    setStepKey(ORDER[Math.min(ORDER.length - 1, idx + 1)]);
   };
 
   const goBack = () => {
-    let prev = ORDER[Math.max(0, idx - 1)];
-    if (prev === 'commerce' && !survey.is_commerce) prev = 'isCommerce';
-    setStepKey(prev);
+    setStepKey(ORDER[Math.max(0, idx - 1)]);
   };
 
   const addAnotherPerson = () => {
     if (!validate()) return;
     setPersonIdx((i) => i + 1);
-    // ensure the slot exists
     setSurvey((s) => {
       const persons = [...s.persons];
       while (persons.length <= personIdx + 1) persons.push(emptyPerson());
@@ -144,7 +160,6 @@ export default function SurveyScreen() {
     router.replace(`/address/${encodeURIComponent(addressId)}`);
   };
 
-  // Render helpers
   const ChoiceRow = <T extends string>(
     options: { v: T; label: string }[],
     current: T,
@@ -230,6 +245,30 @@ export default function SurveyScreen() {
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 140 }}>
+
+          {stepKey === 'typeChoice' && (
+            <View testID="step-typeChoice">
+              <Text style={styles.qTitle}>{t.survey.typeChoiceTitle}</Text>
+              <Text style={styles.intro}>{t.survey.typeChoiceHint}</Text>
+              <TouchableOpacity
+                style={[styles.typeCard, survey.survey_type === 'household' && styles.typeCardActive]}
+                onPress={() => chooseType('household')}
+                testID="type-choice-household"
+              >
+                <Text style={styles.typeTitle}>{t.survey.typeHousehold}</Text>
+                <Text style={styles.typeDesc}>{t.survey.typeHouseholdDesc}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.typeCard, survey.survey_type === 'commerce' && styles.typeCardActive]}
+                onPress={() => chooseType('commerce')}
+                testID="type-choice-commerce"
+              >
+                <Text style={styles.typeTitle}>{t.survey.typeCommerce}</Text>
+                <Text style={styles.typeDesc}>{t.survey.typeCommerceDesc}</Text>
+              </TouchableOpacity>
+              <Text style={styles.code}>{addressId}</Text>
+            </View>
+          )}
 
           {stepKey === 'intro' && (
             <View testID="step-intro">
@@ -406,15 +445,8 @@ export default function SurveyScreen() {
             </View>
           )}
 
-          {stepKey === 'isCommerce' && (
-            <View>
-              {Q(t.survey.q_is_commerce)}
-              {YesNo(survey.is_commerce, (v) => set('is_commerce', v), 'is-commerce')}
-            </View>
-          )}
-
           {stepKey === 'commerce' && (
-            <View>
+            <View testID="step-commerce">
               {Q(t.survey.c_title)}
               <Label>{t.survey.c_name}</Label>
               <TextInput style={styles.text} value={survey.commerce?.name || ''}
@@ -454,6 +486,9 @@ export default function SurveyScreen() {
                 <Text style={styles.qTitle}>{t.survey.p_title} #{personIdx + 1}</Text>
                 <Label>{t.survey.p_name}</Label>
                 <TextInput style={styles.text} value={p.name} onChangeText={(v) => setPerson('name', v)} testID="p-name" />
+                <Label>{t.survey.p_phone_or_email}</Label>
+                <TextInput style={styles.text} value={p.phone_or_email}
+                  onChangeText={(v) => setPerson('phone_or_email', v)} testID="p-phone-email" />
                 <Label>{t.survey.p_age}</Label>
                 <TextInput
                   testID="p-age" style={styles.text} value={String(p.age || 0)}
@@ -487,27 +522,39 @@ export default function SurveyScreen() {
           {stepKey === 'summary' && (
             <View testID="step-summary">
               <Text style={styles.qTitle}>{t.survey.summaryTitle}</Text>
-              <Card title={t.survey.summaryPersons}>
-                {survey.persons.map((p, i) => (
-                  <Text key={i} style={styles.summaryLine}>
-                    {i + 1}. {p.name} • {p.age} • {t.survey[`opt_${p.gender}` as 'opt_male' | 'opt_female']} • {p.profession || '—'}
-                  </Text>
-                ))}
-              </Card>
-              <Card title={t.survey.summaryHouse}>
-                <Text style={styles.summaryLine}>{t.survey.q_num_living_rooms}: {survey.num_living_rooms}</Text>
-                <Text style={styles.summaryLine}>{t.survey.q_num_floors}: {survey.num_floors}</Text>
-                <Text style={styles.summaryLine}>{t.survey.q_walls}: {survey.wall_materials}{survey.wall_materials === 'other' ? ` (${survey.wall_materials_other})` : ''}</Text>
-                <Text style={styles.summaryLine}>{t.survey.q_roof}: {survey.roof_materials}{survey.roof_materials === 'other' ? ` (${survey.roof_materials_other})` : ''}</Text>
-              </Card>
-              <Card title={t.survey.summaryUtilities}>
-                <Text style={styles.summaryLine}>⚡ {survey.electricity}  💧 {survey.water}  🌐 {survey.has_internet ? t.survey.yes : t.survey.no}</Text>
-                <Text style={styles.summaryLine}>🚽 {survey.toilets}  🍳 {survey.kitchen_position}</Text>
-              </Card>
-              {survey.is_commerce && (
+              <View style={[styles.tagBanner, survey.survey_type === 'commerce' ? styles.tagCommerce : styles.tagHousehold]}>
+                <Ionicons name={survey.survey_type === 'commerce' ? 'storefront' : 'home'} size={14} color={Colors.white} />
+                <Text style={styles.tagBannerTxt}>
+                  {survey.survey_type === 'commerce' ? t.survey.typeCommerce : t.survey.typeHousehold}
+                </Text>
+              </View>
+              {survey.survey_type === 'household' && (
+                <>
+                  <Card title={t.survey.summaryPersons}>
+                    {survey.persons.map((p, i) => (
+                      <Text key={i} style={styles.summaryLine}>
+                        {i + 1}. {p.name} • {p.age} • {t.survey[`opt_${p.gender}` as 'opt_male' | 'opt_female']} • {p.profession || '—'}
+                      </Text>
+                    ))}
+                  </Card>
+                  <Card title={t.survey.summaryHouse}>
+                    <Text style={styles.summaryLine}>{t.survey.q_num_living_rooms}: {survey.num_living_rooms}</Text>
+                    <Text style={styles.summaryLine}>{t.survey.q_num_floors}: {survey.num_floors}</Text>
+                    <Text style={styles.summaryLine}>{t.survey.q_walls}: {survey.wall_materials}{survey.wall_materials === 'other' ? ` (${survey.wall_materials_other})` : ''}</Text>
+                    <Text style={styles.summaryLine}>{t.survey.q_roof}: {survey.roof_materials}{survey.roof_materials === 'other' ? ` (${survey.roof_materials_other})` : ''}</Text>
+                  </Card>
+                  <Card title={t.survey.summaryUtilities}>
+                    <Text style={styles.summaryLine}>⚡ {survey.electricity}  💧 {survey.water}  🌐 {survey.has_internet ? t.survey.yes : t.survey.no}</Text>
+                    <Text style={styles.summaryLine}>🚽 {survey.toilets}  🍳 {survey.kitchen_position}</Text>
+                  </Card>
+                </>
+              )}
+              {survey.survey_type === 'commerce' && (
                 <Card title={t.survey.summaryCommerce}>
                   <Text style={styles.summaryLine}>{survey.commerce?.name} — {survey.commerce?.owner}</Text>
                   <Text style={styles.summaryLine}>{survey.commerce?.products}</Text>
+                  <Text style={styles.summaryLine}>📞 {survey.commerce?.phone}</Text>
+                  <Text style={styles.summaryLine}>🕐 {survey.commerce?.hours_weekdays || '—'}</Text>
                 </Card>
               )}
             </View>
@@ -523,10 +570,13 @@ export default function SurveyScreen() {
       </KeyboardAvoidingView>
 
       <View style={styles.footer}>
-        {stepKey !== 'intro' && (
+        {stepKey !== 'typeChoice' && stepKey !== 'intro' && (
           <Button label={t.survey.back} variant="secondary" style={{ flex: 1 }} onPress={goBack} />
         )}
-        {stepKey === 'summary' ? (
+        {stepKey === 'typeChoice' ? (
+          // No bottom button on typeChoice — the cards are the action
+          <View style={{ flex: 1, height: 48 }} />
+        ) : stepKey === 'summary' ? (
           <Button label={t.survey.save} variant="accent" style={{ flex: 1 }} onPress={onSave} testID="save-survey-btn" />
         ) : stepKey === 'personEntry' ? (
           <>
@@ -561,7 +611,7 @@ const styles = StyleSheet.create({
   progressText: { ...Typography.caption, color: Colors.textTertiary, textAlign: 'center', marginTop: 4, marginBottom: 8 },
   intro: { ...Typography.body, color: Colors.textSecondary, marginBottom: Spacing.lg, lineHeight: 24 },
   code: { fontFamily: 'JetBrainsMono_700Bold', fontSize: 18, color: Colors.primary, marginBottom: Spacing.md, textAlign: 'center' },
-  qTitle: { ...Typography.h2, fontSize: 20, marginBottom: Spacing.lg, lineHeight: 28 },
+  qTitle: { ...Typography.h2, fontSize: 20, marginBottom: Spacing.md, lineHeight: 28 },
   text: { backgroundColor: Colors.card, borderColor: Colors.divider, borderWidth: 1, borderRadius: Radius.md, paddingHorizontal: Spacing.md, height: 50, fontFamily: 'DMSans_400Regular', fontSize: 15, color: Colors.textPrimary, marginBottom: Spacing.md },
   fieldLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: 6, marginTop: 4 },
   choiceRow: { gap: 8, marginBottom: Spacing.md },
@@ -584,4 +634,12 @@ const styles = StyleSheet.create({
   summaryCard: { backgroundColor: Colors.card, padding: Spacing.md, borderRadius: Radius.md, marginBottom: Spacing.sm, ...Shadows.card },
   summaryTitle: { ...Typography.label, color: Colors.textSecondary, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 },
   summaryLine: { ...Typography.body, color: Colors.textPrimary, marginVertical: 2 },
+  typeCard: { backgroundColor: Colors.card, padding: Spacing.lg, borderRadius: Radius.lg, marginBottom: Spacing.md, borderWidth: 2, borderColor: Colors.divider, ...Shadows.card },
+  typeCardActive: { borderColor: Colors.primary, backgroundColor: '#F0F9F4' },
+  typeTitle: { ...Typography.h2, fontSize: 20, marginBottom: 6 },
+  typeDesc: { ...Typography.body, color: Colors.textSecondary },
+  tagBanner: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 6, borderRadius: Radius.pill, marginBottom: Spacing.sm },
+  tagHousehold: { backgroundColor: Colors.primary },
+  tagCommerce: { backgroundColor: Colors.accent },
+  tagBannerTxt: { color: Colors.white, fontFamily: 'DMSans_700Bold', fontSize: 12 },
 });

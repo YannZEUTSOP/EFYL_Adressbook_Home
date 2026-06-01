@@ -15,6 +15,7 @@ export default function Login() {
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [code, setCode] = useState('');
   const [demoCode, setDemoCode] = useState('');
+  const [isRealSms, setIsRealSms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [resendIn, setResendIn] = useState(0);
   const tref = useRef<any>(null);

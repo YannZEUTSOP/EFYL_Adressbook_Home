@@ -38,6 +38,7 @@ export type AddressDTO = {
   lat_corrected?: number | null;
   lng_corrected?: number | null;
   has_survey?: boolean;
+  is_commerce?: boolean;
   created_at: string;
 };
 
@@ -48,6 +49,8 @@ export const Api = {
     request<AddressDTO[]>(
       `/addresses?owner_id=${encodeURIComponent(ownerId)}${q ? `&q=${encodeURIComponent(q)}` : ''}`
     ),
+  listCommerces: (q?: string) =>
+    request<AddressDTO[]>(`/commerces${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   getAddress: (addressId: string, ownerId = 'guest') =>
     request<AddressDTO>(`/addresses/${encodeURIComponent(addressId)}?owner_id=${encodeURIComponent(ownerId)}`),
   createAddress: (data: Partial<AddressDTO>) =>

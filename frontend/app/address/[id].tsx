@@ -100,6 +100,7 @@ export default function AddressDetail() {
           <Pill variant={status === 'verified' ? 'green' : status === 'flagged' ? 'red' : 'yellow'} label={statusLabel} testID="detail-status" />
           {addr.low_accuracy && <Pill variant="red" label={`⚠ ${t.detail.lowAccuracy}`} testID="detail-low" />}
           {addr.has_survey && <Pill variant="green" label="📋 ✓" />}
+          {addr.is_commerce && <Pill variant="green" label={`🏪 ${t.home.commerceBadge}`} testID="detail-commerce" />}
         </View>
 
         {/* Mini map */}

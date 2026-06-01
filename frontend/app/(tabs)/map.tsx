@@ -9,31 +9,46 @@ import { LeafletMap, LeafletPin } from '../../src/components/LeafletMap';
 import { Pill } from '../../src/components/Pill';
 
 export default function MapTab() {
-  const { t, addresses, refreshAddresses } = useApp();
+  const { t, addresses, publicCommerces, refreshAddresses, refreshPublicCommerces } = useApp();
   const router = useRouter();
   const [satellite, setSatellite] = useState(false);
+  const [showCommunity, setShowCommunity] = useState(true);
 
-  useFocusEffect(React.useCallback(() => { refreshAddresses(); }, [refreshAddresses]));
+  useFocusEffect(React.useCallback(() => {
+    refreshAddresses();
+    refreshPublicCommerces();
+  }, [refreshAddresses, refreshPublicCommerces]));
 
-  const pins: LeafletPin[] = useMemo(
-    () =>
-      addresses.map((a) => ({
-        id: a.address_id,
-        lat: a.latitude,
-        lng: a.longitude,
-        color:
-          a.flag_count >= 3 ? '#EF4444' :
-          a.low_accuracy ? '#9CA3AF' :
-          a.verified ? '#22C55E' : '#F59E0B',
-        title: `${a.contact_name || a.district} — ${a.address_id}`,
-      })),
-    [addresses]
-  );
+  const pins: LeafletPin[] = useMemo(() => {
+    const mine = addresses.map((a) => ({
+      id: a.address_id,
+      lat: a.latitude,
+      lng: a.longitude,
+      color:
+        a.flag_count >= 3 ? '#EF4444' :
+        a.is_commerce ? '#F97316' :
+        a.low_accuracy ? '#9CA3AF' :
+        a.verified ? '#22C55E' : '#F59E0B',
+      title: `${a.is_commerce ? '🏪 ' : ''}${a.contact_name || a.district} — ${a.address_id}`,
+    }));
+    if (!showCommunity) return mine;
+    const community = publicCommerces.map((a) => ({
+      id: a.address_id,
+      lat: a.latitude,
+      lng: a.longitude,
+      color: '#F97316',
+      title: `🏪 ${a.contact_name || a.district} — ${a.address_id}`,
+    }));
+    // Filter community pins that already exist in mine
+    const mineIds = new Set(mine.map((p) => p.id));
+    return [...mine, ...community.filter((p) => !mineIds.has(p.id))];
+  }, [addresses, publicCommerces, showCommunity]);
 
   const { centerLat, centerLng, zoom } = useMemo(() => {
-    if (!addresses.length) return { centerLat: 4.0951, centerLng: 9.7679, zoom: 13 };
-    const lats = addresses.map((a) => a.latitude);
-    const lngs = addresses.map((a) => a.longitude);
+    const all = [...addresses, ...(showCommunity ? publicCommerces : [])];
+    if (!all.length) return { centerLat: 4.0951, centerLng: 9.7679, zoom: 13 };
+    const lats = all.map((a) => a.latitude);
+    const lngs = all.map((a) => a.longitude);
     const minLat = Math.min(...lats), maxLat = Math.max(...lats);
     const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
     const centerLat = (minLat + maxLat) / 2;
@@ -41,14 +56,17 @@ export default function MapTab() {
     const spread = Math.max(maxLat - minLat, maxLng - minLng);
     const zoom = spread < 0.01 ? 16 : spread < 0.1 ? 13 : spread < 1 ? 10 : 6;
     return { centerLat, centerLng, zoom };
-  }, [addresses]);
+  }, [addresses, publicCommerces, showCommunity]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']} testID="map-screen">
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>{t.map.title}</Text>
-          <Text style={styles.subtitle}>{addresses.length} {t.map.myAddresses}</Text>
+          <Text style={styles.subtitle}>
+            {addresses.length} {t.map.myAddresses}
+            {showCommunity && publicCommerces.length > 0 ? ` • ${publicCommerces.length} 🏪` : ''}
+          </Text>
         </View>
         <View style={styles.layerToggle}>
           <TouchableOpacity
@@ -69,6 +87,17 @@ export default function MapTab() {
           </TouchableOpacity>
         </View>
       </View>
+
+      <TouchableOpacity
+        style={[styles.communityToggle, showCommunity && styles.communityToggleActive]}
+        onPress={() => setShowCommunity((v) => !v)}
+        testID="map-community-toggle"
+      >
+        <Ionicons name="storefront" size={14} color={showCommunity ? Colors.white : Colors.accent} />
+        <Text style={[styles.communityToggleTxt, showCommunity && styles.communityToggleTxtActive]}>
+          {t.home.communityCommerces} ({publicCommerces.length})
+        </Text>
+      </TouchableOpacity>
 
       <View style={styles.mapBox} testID="real-map">
         <LeafletMap
@@ -119,6 +148,18 @@ const styles = StyleSheet.create({
   layerActive: { backgroundColor: Colors.primary },
   layerTxt: { ...Typography.caption, color: Colors.textSecondary, fontFamily: 'DMSans_500Medium' },
   layerTxtActive: { color: Colors.white },
+  communityToggle: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    alignSelf: 'flex-start',
+    marginHorizontal: Spacing.lg, marginTop: Spacing.sm,
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: Radius.pill,
+    borderWidth: 1, borderColor: Colors.accent,
+    backgroundColor: Colors.card,
+  },
+  communityToggleActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
+  communityToggleTxt: { ...Typography.caption, color: Colors.accent, fontFamily: 'DMSans_700Bold' },
+  communityToggleTxtActive: { color: Colors.white },
   mapBox: { margin: Spacing.lg, marginBottom: Spacing.sm, borderRadius: Radius.lg, overflow: 'hidden', height: 320, ...Shadows.card, backgroundColor: '#E7EFE7' },
   listTitle: { ...Typography.h3, paddingHorizontal: Spacing.lg, marginVertical: Spacing.sm },
   row: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.card, padding: Spacing.md, borderRadius: Radius.lg, marginBottom: 10, ...Shadows.card },

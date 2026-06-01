@@ -11,6 +11,7 @@ export type RoofMaterial = 'metal' | 'wood' | 'plastic' | 'concrete' | 'other';
 export type Person = {
   id?: string;
   name: string;
+  phone_or_email: string;
   age: number;
   gender: Gender;
   education: Education;
@@ -28,10 +29,13 @@ export type Commerce = {
   hours_sunday: string;
 };
 
+export type SurveyType = 'household' | 'commerce';
+
 export type HouseholdSurvey = {
   id?: string;
   address_id: string;
   owner_id?: string;
+  survey_type: SurveyType;
   total_persons: number;
   main_income_source: string;
   other_income_sources: string;
@@ -60,9 +64,10 @@ export type HouseholdSurvey = {
   created_at?: string;
 };
 
-export const emptySurvey = (address_id: string): HouseholdSurvey => ({
+export const emptySurvey = (address_id: string, survey_type: SurveyType = 'household'): HouseholdSurvey => ({
   address_id,
   owner_id: 'guest',
+  survey_type,
   total_persons: 1,
   main_income_source: '',
   other_income_sources: '',
@@ -85,18 +90,14 @@ export const emptySurvey = (address_id: string): HouseholdSurvey => ({
   vehicles_motorcycles: 0,
   vehicles_cars: 0,
   vehicles_trucks: 0,
-  is_commerce: false,
-  commerce: null,
+  is_commerce: survey_type === 'commerce',
+  commerce: survey_type === 'commerce' ? emptyCommerce() : null,
   persons: [],
 });
 
 export const emptyPerson = (): Person => ({
-  name: '',
-  age: 0,
-  gender: 'male',
-  education: 'none',
-  profession: '',
-  frequented_place: '',
+  name: '', phone_or_email: '', age: 0, gender: 'male',
+  education: 'none', profession: '', frequented_place: '',
 });
 
 export const emptyCommerce = (): Commerce => ({

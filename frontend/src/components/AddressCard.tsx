@@ -32,9 +32,16 @@ export const AddressCard: React.FC<{
           <Ionicons name="location" size={20} color={Colors.primary} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.name} numberOfLines={1}>
-            {addr.contact_name || addr.district}
-          </Text>
+          <View style={styles.nameRow}>
+            <Text style={styles.name} numberOfLines={1}>
+              {addr.contact_name || addr.district}
+            </Text>
+            {addr.is_commerce && (
+              <View style={styles.commerceBadge}>
+                <Ionicons name="storefront" size={11} color={Colors.white} />
+              </View>
+            )}
+          </View>
           <Text style={styles.code} numberOfLines={1}>
             {addr.address_id}
           </Text>
@@ -76,6 +83,19 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  commerceBadge: {
+    backgroundColor: Colors.accent,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   iconCircle: {
     width: 44,

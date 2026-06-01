@@ -14,14 +14,14 @@ type Ctx = {
   user: UserState;
   setUser: (u: UserState) => Promise<void>;
   addresses: AddressDTO[];
+  publicCommerces: AddressDTO[];
   refreshAddresses: () => Promise<void>;
+  refreshPublicCommerces: () => Promise<void>;
   saveAddress: (a: AddressDTO) => Promise<void>;
   deleteAddress: (addressId: string) => Promise<void>;
-  // surveys
   saveSurvey: (s: HouseholdSurvey) => Promise<void>;
   getLocalSurvey: (addressId: string) => Promise<HouseholdSurvey | null>;
   deleteSurvey: (addressId: string) => Promise<void>;
-  // sync
   syncQueueCount: number;
   syncNow: () => Promise<{ synced: number } | null>;
   lastSync: string | null;
@@ -36,6 +36,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [language, setLanguageState] = useState<Lang>('fr');
   const [user, setUserState] = useState<UserState>({ loggedIn: false });
   const [addresses, setAddresses] = useState<AddressDTO[]>([]);
+  const [publicCommerces, setPublicCommerces] = useState<AddressDTO[]>([]);
   const [syncQueueCount, setSyncQueueCount] = useState(0);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [isOnline, setOnline] = useState(true);
@@ -96,6 +97,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAddresses(list);
   }, []);
 
+  const refreshPublicCommerces = useCallback(async () => {
+    try {
+      const list = await Api.listCommerces();
+      const ownerId = user.userId || 'guest';
+      setPublicCommerces(list.filter((c) => c.owner_id !== ownerId));
+    } catch {
+      // network down — keep current value
+    }
+  }, [user.userId]);
+
+  useEffect(() => {
+    if (ready) refreshPublicCommerces();
+  }, [ready, refreshPublicCommerces]);
+
   const refreshQueueCount = useCallback(async () => {
     const [aq, sq] = await Promise.all([Storage.getSyncQueue(), Storage.getSurveyQueue()]);
     setSyncQueueCount(aq.length + sq.length);
@@ -130,10 +145,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const saveSurvey = useCallback(async (s: HouseholdSurvey) => {
     await Storage.upsertSurvey(s);
-    // Update address has_survey flag locally
     const list = await Storage.getAddresses();
     const next = list.map((a) =>
-      a.address_id === s.address_id ? { ...a, has_survey: true } : a
+      a.address_id === s.address_id
+        ? { ...a, has_survey: true, is_commerce: s.survey_type === 'commerce' }
+        : a
     );
     await Storage.setAddresses(next);
     setAddresses(next);
@@ -207,6 +223,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await Storage.setLastSync(ts);
       setLastSync(ts);
       setOnline(true);
+      // After sync, refresh public commerces to pull in newly added ones from others
+      refreshPublicCommerces();
       return { synced };
     } catch (e) {
       setOnline(false);
@@ -219,7 +237,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const value: Ctx = {
     ready, language, setLanguage, t,
     user, setUser,
-    addresses, refreshAddresses, saveAddress, deleteAddress,
+    addresses, publicCommerces, refreshAddresses, refreshPublicCommerces,
+    saveAddress, deleteAddress,
     saveSurvey, getLocalSurvey, deleteSurvey,
     syncQueueCount, syncNow, lastSync, isOnline, setOnline,
   };

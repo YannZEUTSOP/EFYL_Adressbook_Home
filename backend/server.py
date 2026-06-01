@@ -67,6 +67,7 @@ class Address(BaseModel):
     lat_corrected: Optional[float] = None
     lng_corrected: Optional[float] = None
     has_survey: bool = False
+    is_commerce: bool = False  # public visibility when True
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -90,6 +91,7 @@ class AddressCreate(BaseModel):
     lng_raw: Optional[float] = None
     lat_corrected: Optional[float] = None
     lng_corrected: Optional[float] = None
+    is_commerce: Optional[bool] = False
 
 
 class AddressUpdate(BaseModel):
@@ -104,6 +106,7 @@ class AddressUpdate(BaseModel):
     photo_base64: Optional[str] = None
     lat_corrected: Optional[float] = None
     lng_corrected: Optional[float] = None
+    is_commerce: Optional[bool] = None
 
 
 class VerifyRequest(BaseModel):
@@ -127,6 +130,7 @@ class OTPVerify(BaseModel):
 class Person(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str = ""
+    phone_or_email: str = ""
     age: int = 0
     gender: Literal["male", "female"] = "male"
     education: Literal["primary", "middle", "high_school", "university", "none"] = "none"
@@ -148,6 +152,7 @@ class HouseholdSurvey(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     address_id: str
     owner_id: Optional[str] = "guest"
+    survey_type: Literal["household", "commerce"] = "household"
     total_persons: int = 1
     main_income_source: str = ""
     other_income_sources: str = ""
@@ -223,20 +228,65 @@ async def create_address(payload: AddressCreate):
 
 
 @api_router.get("/addresses", response_model=List[Address])
-async def list_addresses(owner_id: str = "guest", q: Optional[str] = None):
-    query: dict = {"owner_id": owner_id}
+async def list_addresses(owner_id: str = "guest", q: Optional[str] = None,
+                         include_public_commerces: bool = True):
+    """Returns user's own addresses + (optionally) all public commerce addresses
+    from any user. This is what enables community-wide commerce mapping."""
+    own_query: dict = {"owner_id": owner_id}
+    if q:
+        own_query["$or"] = [
+            {"contact_name": {"$regex": q, "$options": "i"}},
+            {"address_id": {"$regex": q, "$options": "i"}},
+            {"district": {"$regex": q, "$options": "i"}},
+        ]
+    seen_ids = set()
+    out: List[Address] = []
+
+    cursor = db.addresses.find(own_query, {"_id": 0}).sort("created_at", -1).limit(500)
+    async for doc in cursor:
+        doc.setdefault("low_accuracy", False)
+        doc.setdefault("has_survey", False)
+        doc.setdefault("is_commerce", False)
+        out.append(Address(**doc))
+        seen_ids.add(doc["address_id"])
+
+    if include_public_commerces:
+        pub_query: dict = {"is_commerce": True, "owner_id": {"$ne": owner_id}}
+        if q:
+            pub_query["$or"] = [
+                {"contact_name": {"$regex": q, "$options": "i"}},
+                {"address_id": {"$regex": q, "$options": "i"}},
+                {"district": {"$regex": q, "$options": "i"}},
+            ]
+        cursor2 = db.addresses.find(pub_query, {"_id": 0}).sort("created_at", -1).limit(500)
+        async for doc in cursor2:
+            if doc["address_id"] in seen_ids:
+                continue
+            doc.setdefault("low_accuracy", False)
+            doc.setdefault("has_survey", False)
+            doc.setdefault("is_commerce", True)
+            out.append(Address(**doc))
+            seen_ids.add(doc["address_id"])
+
+    return out
+
+
+@api_router.get("/commerces", response_model=List[Address])
+async def list_commerces(q: Optional[str] = None):
+    """Returns all public commerce addresses from any user (community map)."""
+    query: dict = {"is_commerce": True}
     if q:
         query["$or"] = [
             {"contact_name": {"$regex": q, "$options": "i"}},
             {"address_id": {"$regex": q, "$options": "i"}},
             {"district": {"$regex": q, "$options": "i"}},
         ]
-    cursor = db.addresses.find(query, {"_id": 0}).sort("created_at", -1).limit(500)
+    cursor = db.addresses.find(query, {"_id": 0}).sort("created_at", -1).limit(2000)
     out = []
     async for doc in cursor:
-        # Ensure new fields default
         doc.setdefault("low_accuracy", False)
         doc.setdefault("has_survey", False)
+        doc.setdefault("is_commerce", True)
         out.append(Address(**doc))
     return out
 
@@ -434,19 +484,21 @@ async def otp_verify(payload: OTPVerify):
 # ============ SURVEY ENDPOINTS ============
 @api_router.post("/surveys", response_model=HouseholdSurvey)
 async def create_survey(payload: HouseholdSurvey):
-    # ensure address exists (best-effort, allow guest seeded data)
     survey = payload
     if not survey.id:
         survey.id = str(uuid.uuid4())
+    # Propagate type to address: commerce surveys mark the address as public
+    survey.is_commerce = (survey.survey_type == "commerce")
     await db.surveys.update_one(
         {"address_id": survey.address_id, "owner_id": survey.owner_id},
         {"$set": survey.dict()},
         upsert=True,
     )
-    # mark address as having a survey
+    # mark address with has_survey + is_commerce flags
+    addr_updates = {"has_survey": True, "is_commerce": survey.is_commerce}
     await db.addresses.update_many(
         {"address_id": survey.address_id},
-        {"$set": {"has_survey": True}},
+        {"$set": addr_updates},
     )
     return survey
 
