@@ -494,10 +494,10 @@ async def create_survey(payload: HouseholdSurvey):
         {"$set": survey.dict()},
         upsert=True,
     )
-    # mark address with has_survey + is_commerce flags
+    # mark address with has_survey + is_commerce flags (scoped to owner to avoid cross-user mutation)
     addr_updates = {"has_survey": True, "is_commerce": survey.is_commerce}
     await db.addresses.update_many(
-        {"address_id": survey.address_id},
+        {"address_id": survey.address_id, "owner_id": survey.owner_id},
         {"$set": addr_updates},
     )
     return survey
