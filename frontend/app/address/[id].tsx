@@ -9,6 +9,7 @@ import { Storage } from '../../src/services/storage';
 import type { AddressDTO } from '../../src/services/api';
 import { Pill } from '../../src/components/Pill';
 import { LeafletMap } from '../../src/components/LeafletMap';
+import { PersonsManager } from '../../src/components/PersonsManager';
 import { formatAddressDisplay, shareMessageFor } from '../../src/utils/address';
 
 function compassLabel(deg: number): string {
@@ -151,6 +152,11 @@ export default function AddressDetail() {
           <ActionTile icon="qr-code" label={t.detail.qr} onPress={() => router.push(`/qr/${encodeURIComponent(addr.address_id)}`)} testID="action-qr" />
           <ActionTile icon="warning-outline" label={t.detail.report} onPress={() => router.push(`/verify/${encodeURIComponent(addr.address_id)}`)} testID="action-report" />
         </View>
+
+        {/* Habitants — visible uniquement pour les adresses Foyer (has_survey + !is_commerce) */}
+        {addr.has_survey && !addr.is_commerce && (
+          <PersonsManager addressId={addr.address_id} />
+        )}
 
         {/* Survey CTA */}
         <TouchableOpacity

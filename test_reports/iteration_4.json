@@ -1,0 +1,31 @@
+{
+  "summary": "Sprint S5 frontend verification: Persons CRUD on Household address detail (PersonsManager). All 8 scenarios from the review request PASS — section visibility (has_survey && !is_commerce), add/edit/remove flows, last-person guard ('Au moins un habitant doit rester'), automatic total_persons recomputation, and offline-first queueing into efyl:survey_queue. Negative paths verified: address without survey hides PM and CTA shows 'Démarrer l'enquête'; commerce address hides PM. Used a localStorage seed strategy (Storage keys: efyl:addresses, efyl:surveys, efyl:survey_queue) to bypass the 20-step survey wizard and exercise PersonsManager directly — equivalent to a real end-state because saveSurvey() persists identically. Confirm/Alert dialogs handled by stubbing window.confirm/window.alert in-page (Playwright's dialog event was racing with sync window.confirm). No backend testing requested.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_4.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "PersonsManager.tsx uses key={`${p.name}-${i}`} for person rows (line 142). If two persons share the same name, edit/delete by index still works, but React reconciliation may misalign avatars during fast edits. Consider keying by a stable id (Person.id is already optional in the type) or by index alone.",
+    "AppContext.mutateSurveyPersons forces total_persons = Math.max(1, nextPersons.length). The UI prevents removing the last person via PersonsManager.onAskRemove, so total_persons should always equal persons.length in practice. The Math.max(1, …) safeguard is defensive but masks bugs if persons[] ever ends up empty through another path — log/throw might be safer.",
+    "PersonsManager.onAskRemove uses native window.confirm/window.alert on web. These block the JS thread synchronously and conflict with Playwright's async dialog handler (had to stub in init script for reliable testing). For production it's fine, but a custom modal would be more testable and consistent with the rest of the app (the editor itself already uses an in-app Modal).",
+    "PersonsManager renders a Modal even when editorVisible=false, which costs a hidden subtree on every render. Acceptable for one address detail screen but worth memoising the children once the survey form grows.",
+    "Editor modal does not allow clearing optional fields cleanly — the age TextInput shows '0' by default and `String(draft.age || 0)` forces re-render with '0' if user blanks the field. Minor UX nit, not a blocker."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "not tested (frontend-only request)",
+    "frontend": "100% (8/8 scenarios) — add/edit/remove, count badge, queue enqueue, last-person guard, no-survey hide, commerce hide, CTA label flip"
+  },
+  "seed_data_creation": "Per-run seed injected via page.evaluate() into localStorage (efyl:addresses, efyl:surveys, efyl:survey_queue) — three address variants used (household w/ 2 persons, address w/o survey, commerce address). No backend mutations.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "S5 PersonsManager is fully validated end-to-end on the web preview. To re-test quickly, seed localStorage directly (much faster than the 20-step wizard); see iteration_4 for the schema. window.confirm/window.alert must be stubbed before clicking remove-person-* because they block synchronously and Playwright's dialog handler races with the click promise. Avoid `page.click('[data-testid=remove-person-0]', force=True)` without that stub — it hangs. Backend was last verified at 33/33 in iteration_3 (test_s4_bifurcation.py); S5 introduced no new backend endpoints, so that suite still applies.",
+  "rca_of_issue": "N/A — feature works as specified."
+}

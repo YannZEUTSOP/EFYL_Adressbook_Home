@@ -4,7 +4,7 @@ import { Storage, SyncOp, SurveySyncOp, Prefs, UserState } from '../services/sto
 import { Api, AddressDTO } from '../services/api';
 import { STRINGS, Lang, Strings } from '../i18n';
 import { DEMO_ADDRESSES } from '../utils/demoData';
-import type { HouseholdSurvey } from '../types/survey';
+import type { HouseholdSurvey, Person } from '../types/survey';
 
 type Ctx = {
   ready: boolean;
@@ -22,6 +22,9 @@ type Ctx = {
   saveSurvey: (s: HouseholdSurvey) => Promise<void>;
   getLocalSurvey: (addressId: string) => Promise<HouseholdSurvey | null>;
   deleteSurvey: (addressId: string) => Promise<void>;
+  removePerson: (addressId: string, index: number) => Promise<void>;
+  addPerson: (addressId: string, person: Person) => Promise<void>;
+  updatePerson: (addressId: string, index: number, person: Person) => Promise<void>;
   syncQueueCount: number;
   syncNow: () => Promise<{ synced: number } | null>;
   lastSync: string | null;
@@ -186,6 +189,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await refreshQueueCount();
   }, [refreshQueueCount]);
 
+  // ===== Person CRUD =====
+  // Internal helper: update persons list on a survey, recompute total_persons, and queue sync.
+  const mutateSurveyPersons = useCallback(async (
+    addressId: string,
+    transform: (persons: Person[]) => Person[],
+  ) => {
+    const map = await Storage.getSurveys();
+    const current = map[addressId];
+    if (!current) throw new Error('Survey introuvable pour cette adresse');
+    if (current.survey_type !== 'household') {
+      throw new Error('Seules les adresses Foyer ont des habitants');
+    }
+    const nextPersons = transform(current.persons || []);
+    const next: HouseholdSurvey = {
+      ...current,
+      persons: nextPersons,
+      total_persons: Math.max(1, nextPersons.length),
+    };
+    await Storage.upsertSurvey(next);
+    const op: SurveySyncOp = {
+      id: `${addressId}-survey-${Date.now()}`,
+      op: 'UPSERT',
+      payload: next,
+      createdAt: new Date().toISOString(),
+    };
+    await Storage.enqueueSurveySync(op);
+    await refreshQueueCount();
+  }, [refreshQueueCount]);
+
+  const removePerson = useCallback(async (addressId: string, index: number) => {
+    await mutateSurveyPersons(addressId, (persons) => persons.filter((_, i) => i !== index));
+  }, [mutateSurveyPersons]);
+
+  const addPerson = useCallback(async (addressId: string, person: Person) => {
+    await mutateSurveyPersons(addressId, (persons) => [...persons, person]);
+  }, [mutateSurveyPersons]);
+
+  const updatePerson = useCallback(async (addressId: string, index: number, person: Person) => {
+    await mutateSurveyPersons(addressId, (persons) =>
+      persons.map((p, i) => (i === index ? person : p))
+    );
+  }, [mutateSurveyPersons]);
+
   const syncNow = useCallback(async () => {
     try {
       const queue = await Storage.getSyncQueue();
@@ -240,6 +286,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addresses, publicCommerces, refreshAddresses, refreshPublicCommerces,
     saveAddress, deleteAddress,
     saveSurvey, getLocalSurvey, deleteSurvey,
+    removePerson, addPerson, updatePerson,
     syncQueueCount, syncNow, lastSync, isOnline, setOnline,
   };
 
