@@ -1,5 +1,5 @@
 """
-EFYL Address Book v2.0.0 backend tests
+EFYL AddressBook v2.0.0 backend tests
 Covers new v2 features: low_accuracy + extra address fields, household surveys,
 commerce, persons, CSV/JSON export, OTP rate limit, OTP code consumption,
 has_survey propagation, delete cascade.

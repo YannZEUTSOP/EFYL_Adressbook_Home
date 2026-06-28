@@ -46,9 +46,9 @@ export function shareMessageFor(name: string, addressId: string, lang: 'fr' | 'e
   const base = appUrl || (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_BACKEND_URL) || '';
   const link = `${base}/import?id=${encodeURIComponent(addressId)}`;
   if (lang === 'fr') {
-    return `📍 ${name || 'Mon adresse'}\nAdresse: ${addressId}\nOuvrir dans EFYL Address Book: ${link}`;
+    return `📍 ${name || 'Mon adresse'}\nAdresse: ${addressId}\nOuvrir dans EFYL AddressBook: ${link}`;
   }
-  return `📍 ${name || 'My address'}\nAddress: ${addressId}\nOpen in EFYL Address Book: ${link}`;
+  return `📍 ${name || 'My address'}\nAddress: ${addressId}\nOpen in EFYL AddressBook: ${link}`;
 }
 
 export function buildQRPayload(addr: {

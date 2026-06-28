@@ -1,4 +1,4 @@
-# EFYL Digital Address Book — PRD v2.0.0
+# EFYL Digital AddressBook — PRD v2.0.0
 
 ## Product
 Digital addressing platform for Sub-Saharan Africa with full household survey capability. Pilot Bonamoussadi, Douala, Cameroon.

@@ -37,7 +37,7 @@ if TWILIO_ENABLED:
         logging.error(f"Twilio init failed: {e}")
         TWILIO_ENABLED = False
 
-app = FastAPI(title="EFYL Address Book API", version="2.0.0")
+app = FastAPI(title="EFYL AddressBook API", version="2.0.0")
 api_router = APIRouter(prefix="/api")
 
 
@@ -199,7 +199,7 @@ def hash_otp(code: str) -> str:
 # ============ ROUTES ============
 @api_router.get("/")
 async def root():
-    return {"message": "EFYL Address Book API", "version": "2.0.0",
+    return {"message": "EFYL AddressBook API", "version": "2.0.0",
             "twilio_enabled": TWILIO_ENABLED}
 
 

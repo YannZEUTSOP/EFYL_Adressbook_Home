@@ -1,5 +1,5 @@
 """
-EFYL Address Book backend tests
+EFYL AddressBook backend tests
 Covers: health, addresses CRUD, sync, verify, OTP auth, nearby
 """
 import os

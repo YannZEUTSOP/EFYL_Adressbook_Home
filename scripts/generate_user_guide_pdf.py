@@ -195,7 +195,7 @@ def on_page(canv, doc):
     # Footer
     canv.setFillColor(GREY)
     canv.setFont("Helvetica", 8)
-    canv.drawString(2*cm, 1.2*cm, "EFYL Digital Address Book — Guide d'Utilisateur Complet (FR)")
+    canv.drawString(2*cm, 1.2*cm, "EFYL Digital AddressBook — Guide d'Utilisateur Complet (FR)")
     canv.drawRightString(A4[0]-2*cm, 1.2*cm, f"Page {doc.page}")
     # Top thin colored line
     canv.setStrokeColor(PRIMARY)
@@ -215,7 +215,7 @@ def on_cover(canv, doc):
     canv.setFont("Helvetica-Bold", 56)
     canv.drawCentredString(A4[0]/2, A4[1]-5*cm, "EFYL")
     canv.setFont("Helvetica", 16)
-    canv.drawCentredString(A4[0]/2, A4[1]-6.5*cm, "Digital Address Book")
+    canv.drawCentredString(A4[0]/2, A4[1]-6.5*cm, "Digital AddressBook")
     canv.setFont("Helvetica-Oblique", 12)
     canv.drawCentredString(A4[0]/2, A4[1]-7.5*cm, "Votre adresse. Partout.")
     # Bas de page
@@ -248,7 +248,7 @@ story.append(Paragraph("Version 2.1 — Sprint S4", cover_subtitle))
 story.append(Spacer(1, 0.6*cm))
 story.append(Paragraph(
     "Ce guide vous accompagne pas à pas pour utiliser <b>toutes</b> les fonctionnalités "
-    "de l'application EFYL Digital Address Book, y compris le mode hors-ligne, "
+    "de l'application EFYL Digital AddressBook, y compris le mode hors-ligne, "
     "les enquêtes guidées Foyer & Commerce, la carte communautaire, le QR Code, "
     "l'export de données et la synchronisation automatique.",
     cover_meta,
@@ -310,7 +310,7 @@ story.append(hr())
 
 story.append(Paragraph("1.1 Qu'est-ce qu'EFYL ?", h2))
 story.append(Paragraph(
-    "<b>EFYL Digital Address Book</b> est une application mobile <b>hors-ligne d'abord</b> "
+    "<b>EFYL Digital AddressBook</b> est une application mobile <b>hors-ligne d'abord</b> "
     "conçue pour créer, partager et vérifier des <b>adresses numériques précises</b> dans les "
     "zones de l'Afrique Sub-Saharienne — et au-delà — où la nomenclature de rues classique "
     "est inexistante, partielle ou obsolète.",

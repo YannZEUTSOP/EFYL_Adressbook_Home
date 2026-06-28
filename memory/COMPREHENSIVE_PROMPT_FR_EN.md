@@ -1,4 +1,4 @@
-# EFYL Digital Address Book — Comprehensive Project Prompt (FR + EN)
+# EFYL Digital AddressBook — Comprehensive Project Prompt (FR + EN)
 
 > Ce document est un **brief complet** destiné aux développeurs, designers, testeurs QA, partenaires gouvernementaux et bailleurs. Il décrit la mission, les fonctionnalités, l'architecture technique, les flux utilisateurs et la roadmap. Lisez-le en entier avant tout test ou intégration.
 >
@@ -10,7 +10,7 @@
 
 ### 1.1 Vision et Mission
 
-**EFYL Address Book** est une application mobile **hors ligne d'abord** destinée à **créer, partager et vérifier des adresses numériques précises** dans les zones de l'Afrique Sub-Saharienne (et au-delà) où la nomenclature de rues classique est inexistante, partielle ou obsolète.
+**EFYL AddressBook** est une application mobile **hors ligne d'abord** destinée à **créer, partager et vérifier des adresses numériques précises** dans les zones de l'Afrique Sub-Saharienne (et au-delà) où la nomenclature de rues classique est inexistante, partielle ou obsolète.
 
 L'objectif est triple :
 
@@ -157,7 +157,7 @@ Quand un utilisateur se rend devant une adresse partagée par un tiers, il peut 
 
 ### 2.1 Vision & Mission
 
-**EFYL Address Book** is an **offline-first mobile application** designed to **create, share and verify accurate digital addresses** in Sub-Saharan Africa (and beyond), where standard street naming is missing, partial or outdated.
+**EFYL AddressBook** is an **offline-first mobile application** designed to **create, share and verify accurate digital addresses** in Sub-Saharan Africa (and beyond), where standard street naming is missing, partial or outdated.
 
 The triple goal is:
 
@@ -302,7 +302,7 @@ When a user stands at another user's address and taps "Verify", the server compu
 
 ## 3. 📩 Contact & Crédits / Credits
 
-* App nom / name: **EFYL Address Book**
+* App nom / name: **EFYL AddressBook**
 * Tagline FR: *Votre adresse. Partout.*
 * Tagline EN: *Your address. Everywhere.*
 * Stack: Expo SDK 53+, FastAPI 0.110+, MongoDB 7+, Python 3.11+.

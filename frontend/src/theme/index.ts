@@ -1,4 +1,4 @@
-// EFYL Address Book — Design System
+// EFYL AddressBook — Design System
 export const Colors = {
   primary: '#0D5C3A',
   primaryLight: '#1A8C58',

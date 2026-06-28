@@ -34,7 +34,7 @@ export default function Index() {
         <View style={styles.logo}>
           <Text style={styles.logoText}>EFYL</Text>
         </View>
-        <Text style={styles.title}>EFYL Address Book</Text>
+        <Text style={styles.title}>EFYL AddressBook</Text>
         <Text style={styles.tag}>Votre adresse. Partout.</Text>
       </Animated.View>
     </View>

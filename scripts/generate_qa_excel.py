@@ -1,4 +1,4 @@
-"""Generate the bilingual QA test script Excel file for EFYL Address Book."""
+"""Generate the bilingual QA test script Excel file for EFYL AddressBook."""
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -130,7 +130,7 @@ SCENARIOS_EN = [
 ]
 
 INFO_FR = [
-    ["EFYL Address Book — Script de tests QA (FR)", ""],
+    ["EFYL AddressBook — Script de tests QA (FR)", ""],
     ["Version", "1.0"],
     ["Date", "Juin 2025"],
     ["Build cible", "Expo SDK 53+ / FastAPI 0.110+"],
@@ -144,7 +144,7 @@ INFO_FR = [
     ["Légende NOUVEAU", "Scénarios créés dans le sprint S4 (bifurcation Foyer/Commerce + carte communautaire)"],
 ]
 INFO_EN = [
-    ["EFYL Address Book — QA test script (EN)", ""],
+    ["EFYL AddressBook — QA test script (EN)", ""],
     ["Version", "1.0"],
     ["Date", "June 2025"],
     ["Target build", "Expo SDK 53+ / FastAPI 0.110+"],

@@ -2,7 +2,7 @@ export type Lang = 'fr' | 'en';
 
 export const STRINGS = {
   fr: {
-    appName: 'EFYL Address Book',
+    appName: 'EFYL AddressBook',
     tagline: 'Votre adresse. Partout.',
     onboarding: {
       slide1Title: 'Fini les indications compliquées',
@@ -290,7 +290,7 @@ export const STRINGS = {
     },
   },
   en: {
-    appName: 'EFYL Address Book',
+    appName: 'EFYL AddressBook',
     tagline: 'Your address. Everywhere.',
     onboarding: {
       slide1Title: 'No more confusing directions',
@@ -303,7 +303,7 @@ export const STRINGS = {
     },
     tabs: { home: 'Home', scan: 'Scan', map: 'Map', profile: 'Profile' },
     home: {
-      title: 'Address Book', search: 'Search...',
+      title: 'AddressBook', search: 'Search...',
       empty: 'No saved addresses', emptyCta: 'Create your first address',
       newAddress: 'New Address',
       offline: 'Offline — your data is safe locally',

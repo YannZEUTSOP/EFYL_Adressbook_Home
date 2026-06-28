@@ -1,4 +1,4 @@
-# 📘 EFYL Address Book — Guide complet & manuel d'utilisation
+# 📘 EFYL AddressBook — Guide complet & manuel d'utilisation
 
 **Version 2.0.0 — La version finale et ultime**
 **Pour le chef de projet, les enquêteurs de terrain et tous les utilisateurs**
@@ -8,7 +8,7 @@
 
 ## 📑 SOMMAIRE GÉNÉRAL
 
-### PARTIE 1 — Le manifeste : pourquoi EFYL Address Book existe
+### PARTIE 1 — Le manifeste : pourquoi EFYL AddressBook existe
 ### PARTIE 2 — Liste de contrôle complète des fonctionnalités implémentées (pour le chef de projet)
 ### PARTIE 3 — Le guide pas-à-pas pour l'utilisateur
 ### PARTIE 4 — Les 12 écrans expliqués un par un
@@ -19,7 +19,7 @@
 
 ---
 
-## 🌍 PARTIE 1 — Le manifeste : pourquoi EFYL Address Book existe
+## 🌍 PARTIE 1 — Le manifeste : pourquoi EFYL AddressBook existe
 
 ### Le problème silencieux
 
@@ -27,7 +27,7 @@ Imaginez vivre dans un endroit où **personne ne peut vous retrouver**. C'est la
 
 ### La promesse d'EFYL
 
-**EFYL Address Book** est une application mobile qui transforme n'importe quel téléphone Android ou iPhone en un **outil d'adressage numérique de précision**. En 60 secondes, un citoyen, un enquêteur ou un commerçant peut :
+**EFYL AddressBook** est une application mobile qui transforme n'importe quel téléphone Android ou iPhone en un **outil d'adressage numérique de précision**. En 60 secondes, un citoyen, un enquêteur ou un commerçant peut :
 
 1. **Créer une adresse numérique unique** pour sa maison ou son commerce, avec une précision GPS sub-métrique (< 1 mètre)
 2. **L'enrichir d'un formulaire d'enquête complet** sur les conditions de vie du foyer
@@ -108,7 +108,7 @@ C'est plus qu'une application. C'est **un acte d'émancipation numérique**, tra
 
 ### Étape 1 — Premier lancement de l'application
 
-1. Vous ouvrez l'application **EFYL Address Book** depuis votre téléphone.
+1. Vous ouvrez l'application **EFYL AddressBook** depuis votre téléphone.
 2. Vous voyez pendant 1 seconde **le logo EFYL animé** sur un fond vert forêt avec la phrase *"Votre adresse. Partout."*.
 3. Au premier lancement uniquement, **3 écrans de bienvenue** vous expliquent l'application :
    - **Slide 1** : *"Fini les indications compliquées — Créez votre adresse numérique en 60 secondes"*
@@ -135,7 +135,7 @@ Vous appuyez sur le bouton orange **« + Nouvelle Adresse »**. L'application vo
 1. **Placez-vous physiquement devant la porte principale** du bâtiment que vous voulez enregistrer.
 2. Tenez votre téléphone **à hauteur de poitrine, à plat**.
 3. Appuyez sur le gros bouton **« 📡 Mesurer la Porte (Haute Précision) »**.
-4. Une popup apparaît : **« EFYL Address Book souhaite accéder à votre position »** → cliquez **Autoriser**.
+4. Une popup apparaît : **« EFYL AddressBook souhaite accéder à votre position »** → cliquez **Autoriser**.
 5. Vous voyez maintenant **un anneau pulsant à l'écran** avec un chiffre qui descend :
    - **Rouge 12 m** au début (le téléphone cherche les satellites)
    - **Jaune 4 m** après quelques secondes
@@ -186,7 +186,7 @@ Vous appuyez sur le bouton orange **« + Nouvelle Adresse »**. L'application vo
 4. Un message pré-formaté s'ouvre :
    > 📍 Marie Nkomo
    > Adresse: BNA-F034-X156
-   > Ouvrir dans EFYL Address Book: [lien]
+   > Ouvrir dans EFYL AddressBook: [lien]
 5. Envoyez-le au destinataire.
 
 ### Étape 5 — Recevoir / scanner une adresse
@@ -585,7 +585,7 @@ Les deux adresses cohabiteront dans la base. Le système de **vérification comm
 
 ## 🎯 PARTIE 9 — Pour conclure
 
-**EFYL Address Book version 2.0.0** est un **outil professionnel complet**, prêt à être déployé sur le terrain à Bonamoussadi. Toutes les fonctionnalités demandées sur les 3 semaines sont **implémentées, testées et documentées**.
+**EFYL AddressBook version 2.0.0** est un **outil professionnel complet**, prêt à être déployé sur le terrain à Bonamoussadi. Toutes les fonctionnalités demandées sur les 3 semaines sont **implémentées, testées et documentées**.
 
 ### Ce que l'application permet de faire **aujourd'hui** :
 
@@ -609,7 +609,7 @@ Les deux adresses cohabiteront dans la base. Le système de **vérification comm
 
 > **« Votre adresse. Partout. »**
 >
-> Pour 750 millions de personnes en Afrique sub-saharienne, l'adressage numérique n'est pas un confort, c'est un **droit à l'existence administrative et économique**. EFYL Address Book leur donne ce droit, **un foyer à la fois**.
+> Pour 750 millions de personnes en Afrique sub-saharienne, l'adressage numérique n'est pas un confort, c'est un **droit à l'existence administrative et économique**. EFYL AddressBook leur donne ce droit, **un foyer à la fois**.
 
 ### Pour aller plus loin
 

@@ -131,7 +131,7 @@ export default function ProfileTab() {
         </Section>
 
         <Section title={t.profile.about}>
-          <Text style={styles.metaTxt}>EFYL Address Book — v2.0.0</Text>
+          <Text style={styles.metaTxt}>EFYL AddressBook — v2.0.0</Text>
           <Text style={styles.metaTxt}>EFYL GmbH • Niddatal, Germany</Text>
           <Text style={styles.metaTxt}>Pilot: Bonamoussadi, Douala, Cameroun</Text>
         </Section>
