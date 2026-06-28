@@ -634,6 +634,49 @@ async def export_json(owner_id: Optional[str] = None):
     }
 
 
+# ============ DOCS / GUIDES DOWNLOAD ============
+DOCS_DIR = Path("/app/memory")
+
+@api_router.get("/docs/list")
+async def list_docs():
+    """List all downloadable documents available."""
+    if not DOCS_DIR.exists():
+        return {"docs": []}
+    items = []
+    for p in sorted(DOCS_DIR.iterdir()):
+        if p.is_file() and p.suffix.lower() in (".pdf", ".xlsx", ".md", ".csv", ".json"):
+            items.append({
+                "filename": p.name,
+                "size_bytes": p.stat().st_size,
+                "url": f"/api/docs/download/{p.name}",
+            })
+    return {"docs": items}
+
+
+@api_router.get("/docs/download/{filename}")
+async def download_doc(filename: str):
+    """Stream a document file from /app/memory. Restricted to known extensions."""
+    from fastapi.responses import FileResponse
+    safe = Path(filename).name  # avoid traversal
+    target = DOCS_DIR / safe
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="Document non trouvé")
+    if target.suffix.lower() not in (".pdf", ".xlsx", ".md", ".csv", ".json"):
+        raise HTTPException(status_code=400, detail="Extension non autorisée")
+    media_map = {
+        ".pdf": "application/pdf",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".md": "text/markdown",
+        ".csv": "text/csv",
+        ".json": "application/json",
+    }
+    return FileResponse(
+        path=str(target),
+        media_type=media_map[target.suffix.lower()],
+        filename=safe,
+    )
+
+
 app.include_router(api_router)
 
 app.add_middleware(
