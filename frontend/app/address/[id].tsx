@@ -21,7 +21,7 @@ function compassLabel(deg: number): string {
 export default function AddressDetail() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { t, language, deleteAddress } = useApp();
+  const { t, language, deleteAddress, isOnline } = useApp();
   const [addr, setAddr] = useState<AddressDTO | null>(null);
 
   useEffect(() => {
@@ -110,6 +110,7 @@ export default function AddressDetail() {
             centerLat={lat}
             centerLng={lng}
             zoom={17}
+            offlineMode={!isOnline}
             pins={[{ id: addr.address_id, lat, lng, color: '#0D5C3A' }]}
             style={{ height: '100%' }}
           />

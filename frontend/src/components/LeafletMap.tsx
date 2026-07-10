@@ -1,6 +1,7 @@
 import React, { useMemo, useRef } from 'react';
 import { Platform, View, StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { getTileDataUrl } from '../services/offlineTiles';
 
 export type LeafletPin = {
   id: string;
@@ -20,6 +21,7 @@ export type LeafletProps = {
   userLat?: number;
   userLng?: number;
   satellite?: boolean;
+  offlineMode?: boolean;           // when true (native), tiles come from local storage
   draggablePin?: boolean;          // when true, single pin user can drag
   draggableInitialLat?: number;
   draggableInitialLng?: number;
@@ -32,9 +34,10 @@ function buildHtml(props: LeafletProps) {
   const {
     centerLat, centerLng, zoom = 16,
     pins = [], showUser, userLat, userLng,
-    satellite = false,
+    satellite = false, offlineMode = false,
     draggablePin = false, draggableInitialLat, draggableInitialLng,
   } = props;
+  const useOffline = offlineMode && Platform.OS !== 'web';
   const safePins = JSON.stringify(pins);
   const dragLat = draggableInitialLat ?? centerLat;
   const dragLng = draggableInitialLng ?? centerLng;
@@ -70,7 +73,34 @@ function buildHtml(props: LeafletProps) {
   var map = L.map('map',{ zoomControl:true, attributionControl:false }).setView([${centerLat}, ${centerLng}], ${zoom});
   var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{ maxZoom:19 });
   var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{ maxZoom:19 });
-  ${satellite ? 'sat' : 'osm'}.addTo(map);
+  ${useOffline ? `
+  // Offline mode: tiles are served from local device storage through the RN bridge
+  var pendingTiles = {};
+  var OfflineLayer = L.GridLayer.extend({
+    createTile: function(coords, done){
+      var img = document.createElement('img');
+      img.width = 256; img.height = 256;
+      img.style.width = '256px'; img.style.height = '256px';
+      var key = coords.z + '_' + coords.x + '_' + coords.y;
+      pendingTiles[key] = { img: img, done: done };
+      send({ type:'tile', key: key, z: coords.z, x: coords.x, y: coords.y });
+      return img;
+    }
+  });
+  window._efylDeliverTile = function(key, dataUrl){
+    var tk = pendingTiles[key];
+    if (!tk) return;
+    if (dataUrl) {
+      tk.img.onload = function(){ tk.done(null, tk.img); };
+      tk.img.onerror = function(){ tk.done(null, tk.img); };
+      tk.img.src = dataUrl;
+    } else {
+      tk.done(null, tk.img);
+    }
+    delete pendingTiles[key];
+  };
+  new OfflineLayer({ minZoom: 3, maxZoom: 19, maxNativeZoom: 17, keepBuffer: 4 }).addTo(map);
+  ` : `${satellite ? 'sat' : 'osm'}.addTo(map);`}
 
   function makeIcon(color){
     return L.divIcon({ className:'', html:'<div class="efyl-pin" style="background:'+color+'"></div>', iconSize:[22,22], iconAnchor:[11,11] });
@@ -109,7 +139,7 @@ export const LeafletMap: React.FC<LeafletProps> = (props) => {
     props.centerLat, props.centerLng, props.zoom,
     JSON.stringify(props.pins || []),
     props.showUser, props.userLat, props.userLng,
-    props.satellite, props.draggablePin,
+    props.satellite, props.offlineMode, props.draggablePin,
     props.draggableInitialLat, props.draggableInitialLng,
   ]);
 
@@ -120,6 +150,13 @@ export const LeafletMap: React.FC<LeafletProps> = (props) => {
       const data = JSON.parse(ev.nativeEvent.data);
       if (data.type === 'pin' && props.onPinTap) props.onPinTap(data.id);
       if (data.type === 'drag' && props.onPinDrag) props.onPinDrag(data.lat, data.lng);
+      if (data.type === 'tile') {
+        // Offline tile request → read from local storage and inject back
+        getTileDataUrl(data.z, data.x, data.y).then((dataUrl) => {
+          const js = `window._efylDeliverTile && window._efylDeliverTile('${data.key}', ${dataUrl ? `'${dataUrl}'` : 'null'}); true;`;
+          ref.current?.injectJavaScript?.(js);
+        });
+      }
     } catch { /* ignore */ }
   };
 

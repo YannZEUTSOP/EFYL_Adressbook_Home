@@ -28,7 +28,7 @@ function compassLabel(deg: number): string {
 
 export default function NewAddress() {
   const router = useRouter();
-  const { t, saveAddress } = useApp();
+  const { t, saveAddress, isOnline } = useApp();
 
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [measuring, setMeasuring] = useState(false);
@@ -512,6 +512,7 @@ export default function NewAddress() {
                   centerLng={lngCorrected ?? coords.longitude}
                   zoom={18}
                   satellite
+                  offlineMode={!isOnline}
                   draggablePin
                   draggableInitialLat={latCorrected ?? coords.latitude}
                   draggableInitialLng={lngCorrected ?? coords.longitude}

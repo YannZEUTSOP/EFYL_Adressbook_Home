@@ -1,0 +1,45 @@
+{
+  "summary": "Frontend-only smoke + regression testing for the new 'Cartes hors ligne' (Offline maps) feature and Map/Home regressions on the Expo web preview. All 7 items in the review request PASS. Offline-maps screen opens from Map tab via testID map-offline-maps-btn; all required chips (city-Fotouni, city-Bafang, city-Douala, city-gps, radius-2/5/10, download-start, offline-maps-back) are present. Fotouni + 10km shows exact expected estimate '~83.2 Mo (6084 tuiles)'. Estimate updates dynamically with radius (2km→4.2Mo/304, 5km→21.7Mo/1590, 10km→83.2Mo/6084) and with city change (Douala+10km also 83.2Mo/6084 — expected since tile count depends primarily on latitude/radius). Yellow notice 'Le téléchargement de cartes est disponible sur mobile (Android / iOS)' is displayed and download-start button is DISABLED on web (aria-disabled=true, opacity 0.4) as designed. Back button returns to Map tab. REGRESSION: Map tab renders Leaflet map with 5 address pins, Plan/Satellite toggle works, community-commerces toggle works, address rows navigate to /address/[id] detail which shows the mini Leaflet map, contact name, address code, GPS coords, verified badge. Home tab list still renders 5 addresses with badges (0.8m, 1.2m, 2.4m, 0.6m). Zero pageerror events during the run. Only warnings observed are benign React Native Web deprecations (shadow*, pointerEvents, useNativeDriver on JS fallback) — pre-existing, not introduced by this feature.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "Global (Expo Web)",
+        "issue": "Console warning: 'shadow*' style props are deprecated. Use 'boxShadow'. Emitted from theme Shadows.card usage. Pre-existing across the app, not caused by offline-maps. Reference: /app/frontend/src/theme/index.ts (Shadows tokens) and StyleSheet usages such as /app/frontend/app/offline-maps.tsx:326, :334, :396."
+      },
+      {
+        "component": "Global (Expo Web)",
+        "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Pre-existing RN Web deprecation — not from offline-maps."
+      },
+      {
+        "component": "Global (Expo Web)",
+        "issue": "Console warning: 'Animated: useNativeDriver is not supported ... Falling back to JS-based animation'. Expected on web; harmless but noisy."
+      }
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_5.json"],
+  "action_items": [
+    "Optional (non-blocking): migrate theme Shadows.card from shadowColor/shadowOffset/shadowOpacity/shadowRadius to a single boxShadow string (or wrap in Platform.select) to silence the RN Web 'shadow*' deprecation warning across the app.",
+    "Optional (non-blocking): audit any lingering `pointerEvents` prop on Views and move to `style={{ pointerEvents: '...' }}` to silence the RN Web deprecation."
+  ],
+  "critical_code_review_comments": [
+    "offlineTiles.ts imports from 'expo-file-system/legacy'. This is the legacy module path — expo-file-system SDK 54+ moved to the new API. It still works but is a soft-deprecation. Consider migrating to the modern expo-file-system API (File/Directory classes) once the offline-download feature is validated on device. Ref: /app/frontend/src/services/offlineTiles.ts:6.",
+    "OfflineRegion.id is built as `${name}-${radiusKm}` (offlineTiles.ts:176). Re-downloading the same city at the same radius overwrites the previous region (intentional resume behavior). However, using the same id for the delete-then-recreate path could cause a stale entry if downloadRegion runs concurrently with deleteRegion. Guard with a global 'in-progress' flag if concurrent invocations become possible.",
+    "downloadRegion signals cancel via `isCancelled()` at each 6-tile batch boundary — a large batch (CONC=6) can still fetch ~6 tiles after user taps Cancel. Acceptable but consider AbortController-based cancellation.",
+    "getTileDataUrl reads the tile as base64 and returns a data URL — for the offline WebView bridge this is fine, but for a 6000+ tile viewport a bulk-batched or file:// path (via WebView allowFileAccess + baseUrl trickery) would be far cheaper. Not a blocker for MVP.",
+    "PRESET_CITIES uses simple lat/lng; consider extracting into a JSON asset so non-devs can extend the list without a rebuild."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "not tested (frontend-only request per E1)",
+    "frontend": "100% (7/7 scenarios in the review request)"
+  },
+  "seed_data_creation": "None — used the app's default seeded/local addresses (5 rows visible on Home & Map). Guest-mode entry via onboarding 'Passer'.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Offline-maps feature is fully verified on Expo web preview (SDK: web build). The download flow itself (expo-file-system tile writes + LeafletMap offline GridLayer WebView bridge) CANNOT be exercised on web — isOfflineMapsSupported=false hides it behind a disabled button + yellow banner, which is the expected UX. To validate the native download+offline-tile bridge, a real Android/iOS build via EAS or Expo Go on device is required. All testIDs used: map-offline-maps-btn, offline-maps-screen, offline-maps-back, city-Fotouni/Bafang/Bandja/Banka/Bana/Kékem/Bafoussam/Bangangté/Douala/Yaoundé/Bamenda/Garoua/Maroua/Ngaoundéré/Bertoua/Buea/Kribi/Limbé/Ebolowa, city-gps, radius-2/5/10, download-estimate, download-start, download-progress (only visible during native download), download-cancel, region-{id}, region-delete-{id}, region-resume-{id}. Map tab regression testIDs: map-screen, map-streets-btn, map-sat-btn, map-community-toggle, real-map, map-list-{address_id}, map-offline-banner (only when offline). Fotouni target confirmed at lat 5.3223, lng 10.2272 in PRESET_CITIES[0]. Expected estimate at 10km: 6084 tiles / ~83.2 Mo — matches specification.",
+  "rca_of_issue": "N/A — no bugs found. Feature works exactly as specified on web; native-only portion is correctly gated behind Platform.OS !== 'web'."
+}

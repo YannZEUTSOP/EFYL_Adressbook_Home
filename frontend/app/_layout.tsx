@@ -39,6 +39,7 @@ export default function RootLayout() {
           <Stack.Screen name="verify/[id]" />
           <Stack.Screen name="survey/[id]" />
           <Stack.Screen name="import" />
+          <Stack.Screen name="offline-maps" />
         </Stack>
       </AppProvider>
     </SafeAreaProvider>
