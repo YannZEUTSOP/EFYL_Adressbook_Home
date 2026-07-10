@@ -209,6 +209,11 @@ test_plan:
 agent_communication:
   - agent: "main"
     message: |
+      Offline Maps feature (June 2026): /offline-maps screen (download OSM tiles per city, radius 2/5/10km, zooms 12-17),
+      offlineTiles.ts service, LeafletMap offlineMode prop (GridLayer + RN bridge serving local tiles when offline).
+      Frontend tested iteration_5.json: 7/7 pass, no regressions. Native tile download requires device (Expo Go/build), not web.
+  - agent: "main"
+    message: |
       Sprint S4 implementation complete. Critical changes:
       1. Survey wizard now starts with typeChoice; chose Household → 19 steps; Commerce → 3 steps.
       2. /api/commerces endpoint added; /api/addresses now merges public commerces.

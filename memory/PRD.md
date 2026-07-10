@@ -62,3 +62,12 @@ Digital addressing platform for Sub-Saharan Africa with full household survey ca
 
 ## Test credentials
 See /app/memory/test_credentials.md
+
+## Offline Maps (Cartes hors ligne) — June 2026
+- New screen `/offline-maps` (from Map tab button): download OSM tiles per city for full offline map usage.
+- Preset cities: Fotouni + surroundings (Bafang, Bandja, Banka, Bana, Kékem) first, then major Cameroon cities; or "Ma position actuelle" (GPS).
+- Radius 2/5/10 km, zooms 12–17, size estimate shown before download (~4/22/83 Mo), progress bar, cancel, resume ("Compléter") for partial zones, delete zones, storage total.
+- Service `src/services/offlineTiles.ts`: slippy tile math, batched downloads (6 concurrent, resume-safe skip-existing), tiles in `documentDirectory/efyl_tiles/{z}/{x}/{y}.png`, region metadata in AsyncStorage.
+- `LeafletMap` new prop `offlineMode`: when device offline (NetInfo), map switches to a custom Leaflet GridLayer fed by base64 tiles from local storage via WebView postMessage/injectJavaScript bridge (maxNativeZoom 17, upscales beyond). Applied on Map tab, address detail mini-map, new-address correction map.
+- Web preview: download disabled with notice (native-only, expo-file-system). GPS positioning works offline natively.
+- Tested: frontend iteration_5.json — 7/7 pass, no regressions.
