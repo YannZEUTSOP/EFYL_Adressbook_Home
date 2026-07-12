@@ -71,3 +71,9 @@ See /app/memory/test_credentials.md
 - `LeafletMap` new prop `offlineMode`: when device offline (NetInfo), map switches to a custom Leaflet GridLayer fed by base64 tiles from local storage via WebView postMessage/injectJavaScript bridge (maxNativeZoom 17, upscales beyond). Applied on Map tab, address detail mini-map, new-address correction map.
 - Web preview: download disabled with notice (native-only, expo-file-system). GPS positioning works offline natively.
 - Tested: frontend iteration_5.json — 7/7 pass, no regressions.
+
+## Twilio Production SMS — July 2026
+- User provided real Twilio credentials (Account SID AC07d2..., Verify Service "EFYL GMBH" VAf50c...). Added to /app/backend/.env → twilio_enabled=true.
+- Pipeline verified: account active (Trial), Verify service fetch OK, OTP request reaches Twilio (error 21608 for unverified numbers = expected Trial behavior).
+- Fixed: auth HTTPException 502 → 400 (Cloudflare was masking 502 JSON with its own HTML error page).
+- PENDING: account is TRIAL → SMS only to numbers verified in Twilio console. For public launch, user must upgrade Twilio account (add payment). Cost ≈ $0.37/successful login to Cameroon.

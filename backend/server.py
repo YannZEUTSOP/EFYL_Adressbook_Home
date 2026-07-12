@@ -420,7 +420,7 @@ async def otp_request(payload: OTPRequest):
             return {"sent": True, "method": "twilio", "phone": phone}
         except Exception as e:
             logging.error(f"Twilio send failed: {e}")
-            raise HTTPException(502, f"SMS provider error: {str(e)}")
+            raise HTTPException(400, f"SMS provider error: {str(e)}")
 
     # Fallback: mock OTP
     code = f"{secrets.randbelow(1000000):06d}"
@@ -456,7 +456,7 @@ async def otp_verify(payload: OTPVerify):
             raise
         except Exception as e:
             logging.error(f"Twilio verify failed: {e}")
-            raise HTTPException(502, f"SMS provider error: {str(e)}")
+            raise HTTPException(400, f"SMS provider error: {str(e)}")
     else:
         rec = await db.otp_codes.find_one({"phone": phone}, {"_id": 0})
         if not rec:
