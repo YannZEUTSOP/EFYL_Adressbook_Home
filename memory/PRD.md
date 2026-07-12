@@ -77,3 +77,5 @@ See /app/memory/test_credentials.md
 - Pipeline verified: account active (Trial), Verify service fetch OK, OTP request reaches Twilio (error 21608 for unverified numbers = expected Trial behavior).
 - Fixed: auth HTTPException 502 → 400 (Cloudflare was masking 502 JSON with its own HTML error page).
 - PENDING: account is TRIAL → SMS only to numbers verified in Twilio console. For public launch, user must upgrade Twilio account (add payment). Cost ≈ $0.37/successful login to Cameroon.
+- UPDATE: At user request, Twilio keys temporarily COMMENTED OUT in backend/.env (mock 123456 active) until user upgrades his Trial account. Re-enable = uncomment 3 lines + restart backend.
+- Session design confirmed: AsyncStorage login never expires (logout only manual) → one SMS per user lifetime, minimal SMS cost.
