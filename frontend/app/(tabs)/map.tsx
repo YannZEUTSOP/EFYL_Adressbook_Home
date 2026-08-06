@@ -26,18 +26,19 @@ export default function MapTab() {
       lng: a.longitude,
       color:
         a.flag_count >= 3 ? '#EF4444' :
+        a.is_public ? '#8B5CF6' :
         a.is_commerce ? '#F97316' :
         a.low_accuracy ? '#9CA3AF' :
         a.verified ? '#22C55E' : '#F59E0B',
-      title: `${a.is_commerce ? '🏪 ' : ''}${a.contact_name || a.district} — ${a.address_id}`,
+      title: `${a.is_public ? '🏛️ ' : a.is_commerce ? '🏪 ' : ''}${a.contact_name || a.district} — ${a.address_id}`,
     }));
     if (!showCommunity) return mine;
     const community = publicCommerces.map((a) => ({
       id: a.address_id,
       lat: a.latitude,
       lng: a.longitude,
-      color: '#F97316',
-      title: `🏪 ${a.contact_name || a.district} — ${a.address_id}`,
+      color: a.is_public ? '#8B5CF6' : '#F97316',
+      title: `${a.is_public ? '🏛️' : '🏪'} ${a.contact_name || a.district} — ${a.address_id}`,
     }));
     // Filter community pins that already exist in mine
     const mineIds = new Set(mine.map((p) => p.id));

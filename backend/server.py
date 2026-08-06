@@ -68,6 +68,8 @@ class Address(BaseModel):
     lng_corrected: Optional[float] = None
     has_survey: bool = False
     is_commerce: bool = False  # public visibility when True
+    is_public: bool = False    # public service/building — also publicly visible
+    photos: Optional[List[dict]] = None  # [{base64, lat, lng, bearing, taken_at}]
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -92,6 +94,8 @@ class AddressCreate(BaseModel):
     lat_corrected: Optional[float] = None
     lng_corrected: Optional[float] = None
     is_commerce: Optional[bool] = False
+    is_public: Optional[bool] = False
+    photos: Optional[List[dict]] = None
 
 
 class AddressUpdate(BaseModel):
@@ -107,6 +111,8 @@ class AddressUpdate(BaseModel):
     lat_corrected: Optional[float] = None
     lng_corrected: Optional[float] = None
     is_commerce: Optional[bool] = None
+    is_public: Optional[bool] = None
+    photos: Optional[List[dict]] = None
 
 
 class VerifyRequest(BaseModel):
@@ -132,8 +138,8 @@ class Person(BaseModel):
     name: str = ""
     phone_or_email: str = ""
     age: int = 0
-    gender: Literal["male", "female"] = "male"
-    education: Literal["primary", "middle", "high_school", "university", "none"] = "none"
+    gender: str = ""       # male | female  ("" = not selected yet)
+    education: str = ""    # primary | middle | high_school | university | none
     profession: str = ""
     frequented_place: str = ""
 
@@ -148,35 +154,46 @@ class Commerce(BaseModel):
     hours_sunday: str = ""
 
 
+class PublicService(BaseModel):
+    name: str = ""
+    category: str = ""        # school|health|government|community|water_point|antenna|religious|other
+    category_other: str = ""
+    managing_org: str = ""
+    phone: str = ""
+    notes: str = ""
+
+
 class HouseholdSurvey(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     address_id: str
     owner_id: Optional[str] = "guest"
-    survey_type: Literal["household", "commerce"] = "household"
+    survey_type: str = "household"   # household | commerce | public
     total_persons: int = 1
     main_income_source: str = ""
     other_income_sources: str = ""
-    income_level: Literal["very_low", "low", "medium", "high"] = "low"
+    income_level: str = ""           # very_low|low|medium|high ("" = not answered)
     num_phones: int = 0
-    has_internet: bool = False
-    electricity: Literal["stable", "unstable", "none"] = "none"
-    water: Literal["stable", "unstable", "none"] = "none"
-    toilets: Literal["flush", "traditional", "other"] = "traditional"
+    has_internet: Optional[bool] = None
+    electricity: str = ""            # stable|unstable|none
+    water: str = ""                  # stable|unstable|none
+    toilets: str = ""                # flush|traditional|other
     toilets_other: str = ""
-    kitchen_position: Literal["room", "living_room", "separate"] = "room"
-    num_living_rooms: int = 0
+    kitchen_position: str = ""       # room|living_room|separate
+    num_living_rooms: int = 1
     num_floors: int = 1
-    wall_materials: Literal["concrete", "adobe", "wood", "other"] = "concrete"
+    wall_materials: str = ""         # concrete|adobe|wood|other
     wall_materials_other: str = ""
-    has_glass_windows: bool = False
-    roof_materials: Literal["metal", "wood", "plastic", "concrete", "other"] = "metal"
+    has_glass_windows: Optional[bool] = None
+    roof_materials: str = ""         # metal|wood|plastic|concrete|other
     roof_materials_other: str = ""
     vehicles_bicycles: int = 0
     vehicles_motorcycles: int = 0
     vehicles_cars: int = 0
     vehicles_trucks: int = 0
     is_commerce: bool = False
+    is_public: bool = False
     commerce: Optional[Commerce] = None
+    public_service: Optional[PublicService] = None
     persons: List[Person] = []
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -251,13 +268,19 @@ async def list_addresses(owner_id: str = "guest", q: Optional[str] = None,
         seen_ids.add(doc["address_id"])
 
     if include_public_commerces:
-        pub_query: dict = {"is_commerce": True, "owner_id": {"$ne": owner_id}}
+        pub_query: dict = {
+            "owner_id": {"$ne": owner_id},
+            "$or": [{"is_commerce": True}, {"is_public": True}],
+        }
         if q:
-            pub_query["$or"] = [
-                {"contact_name": {"$regex": q, "$options": "i"}},
-                {"address_id": {"$regex": q, "$options": "i"}},
-                {"district": {"$regex": q, "$options": "i"}},
-            ]
+            pub_query = {"$and": [
+                pub_query,
+                {"$or": [
+                    {"contact_name": {"$regex": q, "$options": "i"}},
+                    {"address_id": {"$regex": q, "$options": "i"}},
+                    {"district": {"$regex": q, "$options": "i"}},
+                ]},
+            ]}
         cursor2 = db.addresses.find(pub_query, {"_id": 0}).sort("created_at", -1).limit(500)
         async for doc in cursor2:
             if doc["address_id"] in seen_ids:
@@ -273,20 +296,23 @@ async def list_addresses(owner_id: str = "guest", q: Optional[str] = None,
 
 @api_router.get("/commerces", response_model=List[Address])
 async def list_commerces(q: Optional[str] = None):
-    """Returns all public commerce addresses from any user (community map)."""
-    query: dict = {"is_commerce": True}
+    """Returns all public places (commerces + public services) from any user (community map)."""
+    query: dict = {"$or": [{"is_commerce": True}, {"is_public": True}]}
     if q:
-        query["$or"] = [
-            {"contact_name": {"$regex": q, "$options": "i"}},
-            {"address_id": {"$regex": q, "$options": "i"}},
-            {"district": {"$regex": q, "$options": "i"}},
-        ]
+        query = {"$and": [
+            query,
+            {"$or": [
+                {"contact_name": {"$regex": q, "$options": "i"}},
+                {"address_id": {"$regex": q, "$options": "i"}},
+                {"district": {"$regex": q, "$options": "i"}},
+            ]},
+        ]}
     cursor = db.addresses.find(query, {"_id": 0}).sort("created_at", -1).limit(2000)
     out = []
     async for doc in cursor:
         doc.setdefault("low_accuracy", False)
         doc.setdefault("has_survey", False)
-        doc.setdefault("is_commerce", True)
+        doc.setdefault("is_commerce", False)
         out.append(Address(**doc))
     return out
 
@@ -487,15 +513,16 @@ async def create_survey(payload: HouseholdSurvey):
     survey = payload
     if not survey.id:
         survey.id = str(uuid.uuid4())
-    # Propagate type to address: commerce surveys mark the address as public
+    # Propagate type to address: commerce & public surveys mark the address as publicly visible
     survey.is_commerce = (survey.survey_type == "commerce")
+    survey.is_public = (survey.survey_type == "public")
     await db.surveys.update_one(
         {"address_id": survey.address_id, "owner_id": survey.owner_id},
         {"$set": survey.dict()},
         upsert=True,
     )
     # mark address with has_survey + is_commerce flags (scoped to owner to avoid cross-user mutation)
-    addr_updates = {"has_survey": True, "is_commerce": survey.is_commerce}
+    addr_updates = {"has_survey": True, "is_commerce": survey.is_commerce, "is_public": survey.is_public}
     await db.addresses.update_many(
         {"address_id": survey.address_id, "owner_id": survey.owner_id},
         {"$set": addr_updates},
@@ -546,8 +573,9 @@ async def export_csv(owner_id: Optional[str] = None):
         "latitude", "longitude", "accuracy_meters", "low_accuracy",
         "verified", "flag_count",
         "azimuth_degrees", "lat_raw", "lng_raw", "lat_corrected", "lng_corrected",
-        "has_photo", "created_at",
+        "has_photo", "photos_count", "created_at",
         # survey
+        "survey_type",
         "survey_total_persons", "survey_main_income", "survey_other_income",
         "survey_income_level", "survey_num_phones", "survey_has_internet",
         "survey_electricity", "survey_water", "survey_toilets", "survey_toilets_other",
@@ -560,6 +588,8 @@ async def export_csv(owner_id: Optional[str] = None):
         "survey_is_commerce",
         "commerce_name", "commerce_owner", "commerce_phone", "commerce_products",
         "commerce_hours_weekdays", "commerce_hours_saturday", "commerce_hours_sunday",
+        "public_name", "public_category", "public_category_other",
+        "public_managing_org", "public_phone", "public_notes",
         "persons_count", "persons_summary",
     ]
     writer.writerow(headers)
@@ -567,6 +597,7 @@ async def export_csv(owner_id: Optional[str] = None):
     for a in addresses:
         s = await db.surveys.find_one({"address_id": a["address_id"]}, {"_id": 0}) or {}
         commerce = (s.get("commerce") or {}) if s else {}
+        public = (s.get("public_service") or {}) if s else {}
         persons = s.get("persons", []) if s else []
         persons_summary = "; ".join(
             f"{p.get('name','?')}({p.get('age','?')}|{p.get('gender','?')}|{p.get('education','?')}|{p.get('profession','')})"
@@ -582,7 +613,8 @@ async def export_csv(owner_id: Optional[str] = None):
             a.get("azimuth_degrees", ""),
             a.get("lat_raw", ""), a.get("lng_raw", ""),
             a.get("lat_corrected", ""), a.get("lng_corrected", ""),
-            bool(a.get("photo_base64")), a.get("created_at", ""),
+            bool(a.get("photo_base64")), len(a.get("photos") or []), a.get("created_at", ""),
+            s.get("survey_type", ""),
             s.get("total_persons", ""), s.get("main_income_source", ""),
             s.get("other_income_sources", ""), s.get("income_level", ""),
             s.get("num_phones", ""), s.get("has_internet", ""),
@@ -600,6 +632,8 @@ async def export_csv(owner_id: Optional[str] = None):
             commerce.get("phone", ""), commerce.get("products", ""),
             commerce.get("hours_weekdays", ""), commerce.get("hours_saturday", ""),
             commerce.get("hours_sunday", ""),
+            public.get("name", ""), public.get("category", ""), public.get("category_other", ""),
+            public.get("managing_org", ""), public.get("phone", ""), public.get("notes", ""),
             len(persons), persons_summary,
         ]
         writer.writerow(row)

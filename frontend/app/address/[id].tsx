@@ -116,13 +116,27 @@ export default function AddressDetail() {
           />
         </View>
 
-        {/* Photo */}
-        {addr.photo_base64 && (
+        {/* Photos (multiple with GPS + bearing) or legacy single photo */}
+        {addr.photos && addr.photos.length > 0 ? (
+          <View style={styles.photoBox}>
+            <Text style={styles.sectionLabel}>📸 {t.detail.photosLabel} ({addr.photos.length})</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {addr.photos.map((p, i) => (
+                <View key={i} style={{ marginRight: 10 }}>
+                  <Image source={{ uri: `data:image/jpeg;base64,${p.base64}` }} style={styles.photoMulti} />
+                  <Text style={styles.photoMeta}>
+                    {p.bearing !== null ? `🧭 ${p.bearing}°` : ''}{p.lat !== null && p.lng !== null ? `  📍 ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}` : ''}
+                  </Text>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        ) : addr.photo_base64 ? (
           <View style={styles.photoBox}>
             <Text style={styles.sectionLabel}>📸 {t.detail.photoLabel}</Text>
             <Image source={{ uri: `data:image/jpeg;base64,${addr.photo_base64}` }} style={styles.photo} />
           </View>
-        )}
+        ) : null}
 
         {/* GPS data */}
         <View style={styles.coordsCard}>
@@ -193,6 +207,8 @@ const styles = StyleSheet.create({
   miniMap: { height: 180, marginTop: Spacing.md, borderRadius: Radius.lg, overflow: 'hidden', ...Shadows.card },
   photoBox: { marginTop: Spacing.md, backgroundColor: Colors.card, padding: Spacing.md, borderRadius: Radius.lg, ...Shadows.card },
   photo: { width: '100%', height: 200, borderRadius: Radius.md, marginTop: 6, resizeMode: 'cover' },
+  photoMulti: { width: 180, height: 140, borderRadius: Radius.md, marginTop: 6, resizeMode: 'cover' },
+  photoMeta: { ...Typography.caption, color: Colors.textSecondary, marginTop: 4, textAlign: 'center' },
   sectionLabel: { ...Typography.label, color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 1 },
   coordsCard: { marginTop: Spacing.lg, backgroundColor: Colors.card, padding: Spacing.lg, borderRadius: Radius.lg, ...Shadows.card },
   coordsLabel: { ...Typography.label, color: Colors.textSecondary, marginTop: 8 },

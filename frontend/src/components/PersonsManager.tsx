@@ -63,6 +63,7 @@ export const PersonsManager: React.FC<Props> = ({ addressId }) => {
     if (!Number.isFinite(draft.age) || draft.age < 0 || draft.age > 120) {
       setError(t.persons.ageInvalid); return;
     }
+    if (!draft.gender || !draft.education) { setError(t.survey.errChoice); return; }
     try {
       if (editorIndex === null) {
         await addPerson(addressId, draft);

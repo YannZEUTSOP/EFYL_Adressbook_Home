@@ -151,7 +151,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const list = await Storage.getAddresses();
     const next = list.map((a) =>
       a.address_id === s.address_id
-        ? { ...a, has_survey: true, is_commerce: s.survey_type === 'commerce' }
+        ? { ...a, has_survey: true, is_commerce: s.survey_type === 'commerce', is_public: s.survey_type === 'public' }
         : a
     );
     await Storage.setAddresses(next);

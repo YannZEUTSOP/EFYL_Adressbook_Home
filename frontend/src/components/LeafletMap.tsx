@@ -72,7 +72,12 @@ function buildHtml(props: LeafletProps) {
   function send(msg){ try { window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify(msg)); } catch(e){} }
   var map = L.map('map',{ zoomControl:true, attributionControl:false }).setView([${centerLat}, ${centerLng}], ${zoom});
   var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{ maxZoom:19 });
-  var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{ maxZoom:19 });
+  // Hybrid: Esri satellite imagery + roads + place labels (much easier to identify buildings)
+  var sat = L.layerGroup([
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{ maxZoom:19 }),
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',{ maxZoom:19 }),
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{ maxZoom:19 })
+  ]);
   ${useOffline ? `
   // Offline mode: tiles are served from local device storage through the RN bridge
   var pendingTiles = {};
@@ -119,6 +124,11 @@ function buildHtml(props: LeafletProps) {
 
   ${draggablePin ? `
     var d = L.marker([${dragLat}, ${dragLng}], { draggable:true, icon: makeIcon('#E8851A') }).addTo(map);
+    ${pins.length > 0 ? `
+    // Dashed line between the original GPS point (first pin) and the corrected position
+    var dragLine = L.polyline([[${pins[0].lat}, ${pins[0].lng}], d.getLatLng()], { color:'#E8851A', dashArray:'6,8', weight:2, opacity:0.9 }).addTo(map);
+    d.on('drag', function(){ dragLine.setLatLngs([[${pins[0].lat}, ${pins[0].lng}], d.getLatLng()]); });
+    ` : ''}
     d.on('dragend', function(e){
       var ll = d.getLatLng();
       send({ type:'drag', lat: ll.lat, lng: ll.lng });

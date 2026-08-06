@@ -14,7 +14,7 @@ import { Button } from '../src/components/Button';
 import { Pill } from '../src/components/Pill';
 import { LeafletMap } from '../src/components/LeafletMap';
 import { buildAddressId, formatAddressDisplay } from '../src/utils/address';
-import type { AddressDTO } from '../src/services/api';
+import type { AddressDTO, AddressPhoto } from '../src/services/api';
 
 type Coords = { latitude: number; longitude: number; accuracy: number; timestamp: number };
 
@@ -46,11 +46,12 @@ export default function NewAddress() {
   const [notes, setNotes] = useState('');
   const [reverseLoading, setReverseLoading] = useState(false);
 
-  // Step 3 — compass + photo
+  // Step 3 — compass + photos (multiple, each with GPS + bearing)
   const [compassDeg, setCompassDeg] = useState<number | null>(null);
   const [lockedAzimuth, setLockedAzimuth] = useState<number | null>(null);
-  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
+  const [photos, setPhotos] = useState<AddressPhoto[]>([]);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraMode, setCameraMode] = useState<'photo' | 'azimuth'>('photo');
   const cameraRef = useRef<any>(null);
   const magSubRef = useRef<any>(null);
 
@@ -75,29 +76,42 @@ export default function NewAddress() {
 
   useEffect(() => () => { watchSub.current?.remove(); if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current); }, []);
 
-  // Start magnetometer when entering step 3
+  // Start heading tracking when entering step 3.
+  // Primary: Location.watchHeadingAsync (sensor-fusion, works when phone is held upright for camera aiming).
+  // Fallback: raw magnetometer.
   useEffect(() => {
     if (step === 3 && Platform.OS !== 'web') {
-      try {
-        const { Magnetometer } = require('expo-sensors');
-        Magnetometer.isAvailableAsync().then((avail: boolean) => {
-          if (!avail) return;
-          Magnetometer.setUpdateInterval(300);
-          magSubRef.current = Magnetometer.addListener(({ x, y }: { x: number; y: number }) => {
-            let angle = Math.atan2(y, x) * (180 / Math.PI);
-            angle = (angle + 360) % 360;
-            const heading = (90 - angle + 360) % 360;
-            setCompassDeg(heading);
+      let headingSub: Location.LocationSubscription | null = null;
+      (async () => {
+        try {
+          headingSub = await Location.watchHeadingAsync((h) => {
+            const deg = h.trueHeading >= 0 ? h.trueHeading : h.magHeading;
+            if (deg >= 0) setCompassDeg(deg);
           });
-        }).catch(() => { /* sensor not available */ });
-      } catch { /* expo-sensors not available */ }
+        } catch {
+          try {
+            const { Magnetometer } = require('expo-sensors');
+            const avail = await Magnetometer.isAvailableAsync();
+            if (!avail) return;
+            Magnetometer.setUpdateInterval(300);
+            magSubRef.current = Magnetometer.addListener(({ x, y }: { x: number; y: number }) => {
+              let angle = Math.atan2(y, x) * (180 / Math.PI);
+              angle = (angle + 360) % 360;
+              const heading = (90 - angle + 360) % 360;
+              setCompassDeg(heading);
+            });
+          } catch { /* no sensor available */ }
+        }
+      })();
+      return () => {
+        headingSub?.remove();
+        if (magSubRef.current) {
+          magSubRef.current.remove();
+          magSubRef.current = null;
+        }
+      };
     }
-    return () => {
-      if (magSubRef.current) {
-        magSubRef.current.remove();
-        magSubRef.current = null;
-      }
-    };
+    return undefined;
   }, [step]);
 
   const startMeasure = async () => {
@@ -245,16 +259,21 @@ export default function NewAddress() {
   const computedAddressId = buildAddressId(district || 'XXX', sector, streetId, houseNumber);
   const display = formatAddressDisplay(district || '—', sector, streetId, houseNumber);
 
-  // Step 3 — photo capture
-  const takePhoto = async () => {
+  // Step 3 — photo capture (multiple photos, each with GPS + bearing)
+  const openCamera = async (mode: 'photo' | 'azimuth') => {
     if (Platform.OS === 'web') {
       Alert.alert('Photo', "La capture photo nécessite l'application mobile.");
+      return;
+    }
+    if (mode === 'photo' && photos.length >= 5) {
+      Alert.alert('', t.newAddress.maxPhotos);
       return;
     }
     try {
       const cam = require('expo-camera');
       const perm = await cam.Camera.requestCameraPermissionsAsync();
       if (perm.status !== 'granted') { Alert.alert('Camera', 'Permission caméra refusée'); return; }
+      setCameraMode(mode);
       setCameraOpen(true);
     } catch {
       Alert.alert('Photo', "Le module caméra n'est pas disponible.");
@@ -265,12 +284,42 @@ export default function NewAddress() {
     try {
       if (!cameraRef.current) return;
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.5, base64: true, skipProcessing: false,
+        quality: 0.4, base64: true, skipProcessing: false,
       });
-      if (photo?.base64) setPhotoBase64(photo.base64);
+      if (photo?.base64) {
+        // Record GPS position at capture time (fast last-known fix, fallback to step-1 coords)
+        let lat = coords?.latitude ?? null;
+        let lng = coords?.longitude ?? null;
+        try {
+          const last = await Location.getLastKnownPositionAsync();
+          if (last) { lat = last.coords.latitude; lng = last.coords.longitude; }
+        } catch { /* keep step-1 coords */ }
+        const bearing = compassDeg !== null ? Math.round(compassDeg) : null;
+        const newPhoto: AddressPhoto = {
+          base64: photo.base64, lat, lng, bearing,
+          taken_at: new Date().toISOString(),
+        };
+        if (photos.length < 5) setPhotos((p) => [...p, newPhoto]);
+        if (cameraMode === 'azimuth' && compassDeg !== null) {
+          setLockedAzimuth(compassDeg);
+          try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch { /* ignore */ }
+        }
+      }
       setCameraOpen(false);
     } catch (e) {
       Alert.alert('Photo', "Erreur lors de la capture.");
+    }
+  };
+
+  const deletePhoto = (i: number) => {
+    const doIt = () => setPhotos((p) => p.filter((_, j) => j !== i));
+    if (Platform.OS === 'web') {
+      if (window.confirm(t.newAddress.deletePhotoConfirm)) doIt();
+    } else {
+      Alert.alert(t.newAddress.deletePhotoConfirm, '', [
+        { text: t.common.cancel, style: 'cancel' },
+        { text: t.common.ok, style: 'destructive', onPress: doIt },
+      ]);
     }
   };
 
@@ -304,7 +353,8 @@ export default function NewAddress() {
       verified: false, flag_count: 0,
       low_accuracy: lowAccuracy,
       azimuth_degrees: lockedAzimuth,
-      photo_base64: photoBase64,
+      photo_base64: photos[0]?.base64 ?? null,
+      photos: photos.length ? photos : null,
       lat_raw: coords.latitude, lng_raw: coords.longitude,
       lat_corrected: latCorrected, lng_corrected: lngCorrected,
       has_survey: false,
@@ -475,24 +525,47 @@ export default function NewAddress() {
                   testID="lock-direction-btn"
                   style={{ marginTop: Spacing.md }}
                 />
+                {Platform.OS !== 'web' && (
+                  <>
+                    <Button
+                      label={`📷 ${t.newAddress.aimCamera}`}
+                      variant="ghost"
+                      onPress={() => openCamera('azimuth')}
+                      testID="aim-camera-btn"
+                      style={{ marginTop: 8 }}
+                    />
+                    <Text style={styles.aimHint}>{t.newAddress.aimHint}</Text>
+                  </>
+                )}
               </View>
 
-              {/* Photo */}
+              {/* Photos (multiple, GPS + bearing per photo) */}
               <View style={styles.photoCard}>
-                <Text style={styles.compassLabel}>{t.newAddress.photoTitle} <Text style={styles.optional}>({t.newAddress.photoOptional})</Text></Text>
-                {photoBase64 ? (
-                  <Image source={{ uri: `data:image/jpeg;base64,${photoBase64}` }} style={styles.photoPreview} />
-                ) : (
-                  <View style={styles.photoPlaceholder}>
-                    <Ionicons name="camera-outline" size={48} color={Colors.textTertiary} />
-                  </View>
-                )}
-                <Button
-                  label={photoBase64 ? t.newAddress.retakePhoto : t.newAddress.takePhoto}
-                  variant="secondary"
-                  onPress={takePhoto}
-                  testID="take-photo-btn"
-                />
+                <Text style={styles.compassLabel}>
+                  {t.newAddress.photoTitle} <Text style={styles.optional}>({t.newAddress.photoOptional})</Text>
+                </Text>
+                <Text style={styles.compassHint}>{t.newAddress.photosHint}</Text>
+                <View style={styles.photoGrid}>
+                  {photos.map((p, i) => (
+                    <View key={i} style={styles.photoThumbWrap} testID={`photo-thumb-${i}`}>
+                      <Image source={{ uri: `data:image/jpeg;base64,${p.base64}` }} style={styles.photoThumb} />
+                      {p.bearing !== null && (
+                        <View style={styles.photoBearing}>
+                          <Text style={styles.photoBearingTxt}>🧭 {p.bearing}°</Text>
+                        </View>
+                      )}
+                      <TouchableOpacity style={styles.photoDelete} onPress={() => deletePhoto(i)} testID={`delete-photo-${i}`}>
+                        <Ionicons name="close" size={14} color="#fff" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  {photos.length < 5 && (
+                    <TouchableOpacity style={styles.photoAdd} onPress={() => openCamera('photo')} testID="take-photo-btn">
+                      <Ionicons name="camera-outline" size={28} color={Colors.primary} />
+                      <Text style={styles.photoAddTxt}>{t.newAddress.addPhoto}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
 
               <View style={{ flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.md }}>
@@ -513,11 +586,12 @@ export default function NewAddress() {
                   zoom={18}
                   satellite
                   offlineMode={!isOnline}
+                  pins={[{ id: 'original-gps', lat: coords.latitude, lng: coords.longitude, color: '#3B82F6', title: 'GPS' }]}
                   draggablePin
                   draggableInitialLat={latCorrected ?? coords.latitude}
                   draggableInitialLng={lngCorrected ?? coords.longitude}
                   onPinDrag={(lat, lng) => { setLatCorrected(lat); setLngCorrected(lng); }}
-                  style={{ height: 360 }}
+                  style={{ height: Math.max(420, Dimensions.get('window').height - 330) }}
                 />
               </View>
               {latCorrected !== null && lngCorrected !== null && (
@@ -561,8 +635,15 @@ export default function NewAddress() {
                 {lockedAzimuth !== null && (
                   <Text style={styles.reviewLine}>🧭 {Math.round(lockedAzimuth)}° {compassLabel(lockedAzimuth)}</Text>
                 )}
-                {photoBase64 && (
-                  <Image source={{ uri: `data:image/jpeg;base64,${photoBase64}` }} style={styles.reviewPhoto} />
+                {photos.length > 0 && (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                    {photos.map((p, i) => (
+                      <View key={i} style={{ marginRight: 8 }}>
+                        <Image source={{ uri: `data:image/jpeg;base64,${p.base64}` }} style={styles.reviewPhoto} />
+                        {p.bearing !== null && <Text style={styles.reviewPhotoMeta}>🧭 {p.bearing}°</Text>}
+                      </View>
+                    ))}
+                  </ScrollView>
                 )}
                 {lowAccuracy && (
                   <View style={{ marginTop: 8 }}>
@@ -649,7 +730,8 @@ const styles = StyleSheet.create({
   codePreviewMeta: { ...Typography.bodySm, color: Colors.textSecondary },
   reviewCard: { backgroundColor: Colors.card, padding: Spacing.lg, borderRadius: Radius.lg, marginBottom: Spacing.lg, ...Shadows.card },
   reviewLine: { ...Typography.body, color: Colors.textSecondary, marginTop: 6 },
-  reviewPhoto: { marginTop: Spacing.md, width: '100%', height: 180, borderRadius: Radius.md },
+  reviewPhoto: { marginTop: Spacing.md, width: 140, height: 110, borderRadius: Radius.md },
+  reviewPhotoMeta: { ...Typography.caption, color: Colors.textSecondary, textAlign: 'center', marginTop: 2 },
   detectHint: { ...Typography.bodySm, color: Colors.primary, marginBottom: Spacing.sm, fontFamily: 'DMSans_500Medium' },
   detectBold: { fontFamily: 'DMSans_700Bold', color: Colors.primary },
   compassCard: { backgroundColor: Colors.card, padding: Spacing.lg, borderRadius: Radius.lg, alignItems: 'center', marginBottom: Spacing.md, ...Shadows.card },
@@ -666,6 +748,19 @@ const styles = StyleSheet.create({
   photoCard: { backgroundColor: Colors.card, padding: Spacing.lg, borderRadius: Radius.lg, alignItems: 'center', marginBottom: Spacing.md, ...Shadows.card },
   photoPlaceholder: { width: '100%', height: 160, backgroundColor: Colors.surface, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center', marginVertical: Spacing.md },
   photoPreview: { width: '100%', height: 200, borderRadius: Radius.md, marginVertical: Spacing.md, resizeMode: 'cover' },
+  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: Spacing.md },
+  photoThumbWrap: { width: 96, height: 96, borderRadius: Radius.md, overflow: 'hidden' },
+  photoThumb: { width: '100%', height: '100%' },
+  photoBearing: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.55)', paddingVertical: 2, alignItems: 'center' },
+  photoBearingTxt: { color: '#fff', fontSize: 10, fontFamily: 'DMSans_700Bold' },
+  photoDelete: { position: 'absolute', top: 4, right: 4, width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
+  photoAdd: { width: 96, height: 96, borderRadius: Radius.md, borderWidth: 2, borderStyle: 'dashed', borderColor: Colors.primary, alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: '#F0F9F4' },
+  photoAddTxt: { ...Typography.caption, color: Colors.primary, fontFamily: 'DMSans_700Bold', textAlign: 'center' },
+  aimHint: { ...Typography.caption, color: Colors.textSecondary, textAlign: 'center', marginTop: 4 },
+  camOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  camCross: { alignItems: 'center', justifyContent: 'center' },
+  camHeading: { color: '#fff', fontFamily: 'JetBrainsMono_700Bold', fontSize: 32, marginTop: 12, textShadowColor: 'rgba(0,0,0,0.7)', textShadowRadius: 6 },
+  camAimHint: { color: 'rgba(255,255,255,0.9)', fontSize: 13, fontFamily: 'DMSans_500Medium', textAlign: 'center', marginTop: 8, paddingHorizontal: 40, textShadowColor: 'rgba(0,0,0,0.7)', textShadowRadius: 4 },
   satMapWrap: { borderRadius: Radius.lg, overflow: 'hidden', marginBottom: Spacing.md, ...Shadows.card },
   correctedBox: { backgroundColor: Colors.surface, padding: Spacing.md, borderRadius: Radius.md, marginBottom: Spacing.md },
   correctedLine: { ...Typography.bodySm, fontFamily: 'JetBrainsMono_700Bold', color: Colors.textPrimary, marginVertical: 2 },

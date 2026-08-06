@@ -7,17 +7,19 @@ import { Colors, Radius, Shadows, Spacing, Typography } from '../../src/theme';
 import { useApp } from '../../src/contexts/AppContext';
 import { Button } from '../../src/components/Button';
 import {
-  HouseholdSurvey, emptySurvey, emptyPerson, emptyCommerce,
+  HouseholdSurvey, emptySurvey, emptyPerson, emptyCommerce, emptyPublicService,
   IncomeLevel, Utility, Toilets, KitchenPosition, WallMaterial, RoofMaterial,
-  Education, Gender, SurveyType,
+  Education, Gender, SurveyType, PublicCategory, Person,
 } from '../../src/types/survey';
+import { HoursField, isValidHours, formatHours } from '../../src/components/HoursField';
+import { ProductsPicker, parseProducts } from '../../src/components/ProductsPicker';
 
 type StepKey =
   | 'typeChoice' | 'intro' | 'totalPersons' | 'income' | 'incomeLevel'
   | 'phones' | 'internet' | 'electricity' | 'water'
   | 'toilets' | 'kitchen' | 'rooms' | 'floors'
   | 'walls' | 'windows' | 'roof'
-  | 'vehicles' | 'commerce'
+  | 'vehicles' | 'commerce' | 'publicService'
   | 'personsIntro' | 'personEntry'
   | 'summary';
 
@@ -33,15 +35,22 @@ const COMMERCE_ORDER: StepKey[] = [
   'typeChoice', 'commerce', 'summary',
 ];
 
+const PUBLIC_ORDER: StepKey[] = [
+  'typeChoice', 'publicService', 'summary',
+];
+
 export default function SurveyScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { t, saveSurvey, getLocalSurvey } = useApp();
+  const { t, language, saveSurvey, getLocalSurvey } = useApp();
   const addressId = decodeURIComponent(String(id || ''));
 
   const [survey, setSurvey] = useState<HouseholdSurvey>(emptySurvey(addressId));
   const [stepKey, setStepKey] = useState<StepKey>('typeChoice');
-  const [personIdx, setPersonIdx] = useState<number>(0);
+  const [typeChosen, setTypeChosen] = useState(false);
+  const [personMode, setPersonMode] = useState<'list' | 'form'>('list');
+  const [personDraft, setPersonDraft] = useState<Person>(emptyPerson());
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>('');
 
   useEffect(() => {
@@ -49,8 +58,13 @@ export default function SurveyScreen() {
       const existing = await getLocalSurvey(addressId);
       if (existing) {
         setSurvey(existing);
-        // If resuming, skip type choice & jump to commerce or intro accordingly
-        setStepKey(existing.survey_type === 'commerce' ? 'commerce' : 'intro');
+        setTypeChosen(true);
+        // If resuming, skip type choice & jump to the right step
+        setStepKey(
+          existing.survey_type === 'commerce' ? 'commerce'
+          : existing.survey_type === 'public' ? 'publicService'
+          : 'intro'
+        );
       }
     })();
   }, [addressId, getLocalSurvey]);
@@ -65,18 +79,26 @@ export default function SurveyScreen() {
       ...s,
       commerce: { ...(s.commerce || emptyCommerce()), [field]: v },
     }));
+    setErrorMsg('');
   };
 
-  const setPerson = (field: string, v: any) => {
-    setSurvey((s) => {
-      const persons = [...s.persons];
-      while (persons.length <= personIdx) persons.push(emptyPerson());
-      persons[personIdx] = { ...persons[personIdx], [field]: v };
-      return { ...s, persons };
-    });
+  const setPublic = (field: string, v: string) => {
+    setSurvey((s) => ({
+      ...s,
+      public_service: { ...(s.public_service || emptyPublicService()), [field]: v },
+    }));
+    setErrorMsg('');
   };
 
-  const ORDER: StepKey[] = survey.survey_type === 'commerce' ? COMMERCE_ORDER : HOUSEHOLD_ORDER;
+  const setDraftField = (field: keyof Person, v: any) => {
+    setPersonDraft((p) => ({ ...p, [field]: v }));
+    setErrorMsg('');
+  };
+
+  const ORDER: StepKey[] =
+    survey.survey_type === 'commerce' ? COMMERCE_ORDER
+    : survey.survey_type === 'public' ? PUBLIC_ORDER
+    : HOUSEHOLD_ORDER;
   const idx = Math.max(0, ORDER.indexOf(stepKey));
   const totalSteps = ORDER.length;
 
@@ -85,10 +107,13 @@ export default function SurveyScreen() {
       ...s,
       survey_type: type,
       is_commerce: type === 'commerce',
+      is_public: type === 'public',
       commerce: type === 'commerce' ? (s.commerce || emptyCommerce()) : null,
+      public_service: type === 'public' ? (s.public_service || emptyPublicService()) : null,
     }));
+    setTypeChosen(true);
     // Move to next step in the chosen order
-    const order = type === 'commerce' ? COMMERCE_ORDER : HOUSEHOLD_ORDER;
+    const order = type === 'commerce' ? COMMERCE_ORDER : type === 'public' ? PUBLIC_ORDER : HOUSEHOLD_ORDER;
     setStepKey(order[1]);
     setErrorMsg('');
   };
@@ -105,23 +130,43 @@ export default function SurveyScreen() {
     if (stepKey === 'income') {
       if (!survey.main_income_source.trim()) { setErrorMsg(t.survey.errRequired); return false; }
     }
-    if (stepKey === 'toilets' && survey.toilets === 'other' && !survey.toilets_other.trim()) {
-      setErrorMsg(t.survey.errRequired); return false;
+    if (stepKey === 'incomeLevel' && !survey.income_level) { setErrorMsg(t.survey.errChoice); return false; }
+    if (stepKey === 'internet' && survey.has_internet === null) { setErrorMsg(t.survey.errChoice); return false; }
+    if (stepKey === 'electricity' && !survey.electricity) { setErrorMsg(t.survey.errChoice); return false; }
+    if (stepKey === 'water' && !survey.water) { setErrorMsg(t.survey.errChoice); return false; }
+    if (stepKey === 'toilets') {
+      if (!survey.toilets) { setErrorMsg(t.survey.errChoice); return false; }
+      if (survey.toilets === 'other' && !survey.toilets_other.trim()) { setErrorMsg(t.survey.errRequired); return false; }
     }
-    if (stepKey === 'walls' && survey.wall_materials === 'other' && !survey.wall_materials_other.trim()) {
-      setErrorMsg(t.survey.errRequired); return false;
+    if (stepKey === 'kitchen' && !survey.kitchen_position) { setErrorMsg(t.survey.errChoice); return false; }
+    if (stepKey === 'rooms' && (!Number.isFinite(survey.num_living_rooms) || survey.num_living_rooms < 1)) {
+      setErrorMsg(t.survey.errPositive); return false;
     }
-    if (stepKey === 'roof' && survey.roof_materials === 'other' && !survey.roof_materials_other.trim()) {
-      setErrorMsg(t.survey.errRequired); return false;
+    if (stepKey === 'floors' && (!Number.isFinite(survey.num_floors) || survey.num_floors < 1)) {
+      setErrorMsg(t.survey.errPositive); return false;
+    }
+    if (stepKey === 'walls') {
+      if (!survey.wall_materials) { setErrorMsg(t.survey.errChoice); return false; }
+      if (survey.wall_materials === 'other' && !survey.wall_materials_other.trim()) { setErrorMsg(t.survey.errRequired); return false; }
+    }
+    if (stepKey === 'windows' && survey.has_glass_windows === null) { setErrorMsg(t.survey.errChoice); return false; }
+    if (stepKey === 'roof') {
+      if (!survey.roof_materials) { setErrorMsg(t.survey.errChoice); return false; }
+      if (survey.roof_materials === 'other' && !survey.roof_materials_other.trim()) { setErrorMsg(t.survey.errRequired); return false; }
     }
     if (stepKey === 'commerce') {
       const c = survey.commerce || emptyCommerce();
       if (!c.name.trim()) { setErrorMsg(t.survey.errRequired); return false; }
+      if (parseProducts(c.products).length === 0) { setErrorMsg(t.survey.errProducts); return false; }
+      for (const h of [c.hours_weekdays, c.hours_saturday, c.hours_sunday]) {
+        if (h && !isValidHours(h)) { setErrorMsg(t.survey.h_invalid); return false; }
+      }
     }
-    if (stepKey === 'personEntry') {
-      const p = survey.persons[personIdx] || emptyPerson();
+    if (stepKey === 'publicService') {
+      const p = survey.public_service || emptyPublicService();
       if (!p.name.trim()) { setErrorMsg(t.survey.errRequired); return false; }
-      if (!Number.isFinite(p.age) || p.age < 0 || p.age > 120) { setErrorMsg(t.survey.errMaxAge); return false; }
+      if (!p.category) { setErrorMsg(t.survey.errChoice); return false; }
+      if (p.category === 'other' && !p.category_other.trim()) { setErrorMsg(t.survey.errRequired); return false; }
     }
     return true;
   };
@@ -135,18 +180,53 @@ export default function SurveyScreen() {
     setStepKey(ORDER[Math.max(0, idx - 1)]);
   };
 
-  const addAnotherPerson = () => {
-    if (!validate()) return;
-    setPersonIdx((i) => i + 1);
+  // ===== Persons management (add / edit / delete inside the wizard) =====
+  const startAddPerson = () => {
+    setPersonDraft(emptyPerson());
+    setEditingIdx(null);
+    setPersonMode('form');
+    setErrorMsg('');
+  };
+
+  const startEditPerson = (i: number) => {
+    setPersonDraft({ ...survey.persons[i] });
+    setEditingIdx(i);
+    setPersonMode('form');
+    setErrorMsg('');
+  };
+
+  const confirmDeletePerson = (i: number) => {
+    const doIt = () => {
+      setSurvey((s) => ({ ...s, persons: s.persons.filter((_, j) => j !== i) }));
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm(t.survey.pl_deleteConfirm)) doIt();
+    } else {
+      Alert.alert(t.survey.pl_deleteConfirm, '', [
+        { text: t.common.cancel, style: 'cancel' },
+        { text: t.survey.pl_delete, style: 'destructive', onPress: doIt },
+      ]);
+    }
+  };
+
+  const savePersonDraft = () => {
+    if (!personDraft.name.trim()) { setErrorMsg(t.survey.errRequired); return; }
+    if (!Number.isFinite(personDraft.age) || personDraft.age < 0 || personDraft.age > 120) {
+      setErrorMsg(t.survey.errMaxAge); return;
+    }
+    if (!personDraft.gender || !personDraft.education) { setErrorMsg(t.survey.errChoice); return; }
     setSurvey((s) => {
       const persons = [...s.persons];
-      while (persons.length <= personIdx + 1) persons.push(emptyPerson());
+      if (editingIdx !== null) persons[editingIdx] = personDraft;
+      else persons.push(personDraft);
       return { ...s, persons, total_persons: Math.max(s.total_persons, persons.length) };
     });
+    setPersonMode('list');
+    setEditingIdx(null);
+    setErrorMsg('');
   };
 
   const finishPersons = () => {
-    if (!validate()) return;
     if (survey.persons.length === 0) {
       setErrorMsg(t.survey.p_atLeastOne);
       return;
@@ -155,14 +235,17 @@ export default function SurveyScreen() {
   };
 
   const onSave = async () => {
-    await saveSurvey(survey);
+    const final = survey.survey_type === 'household'
+      ? { ...survey, total_persons: Math.max(survey.total_persons, survey.persons.length) }
+      : survey;
+    await saveSurvey(final);
     Alert.alert(t.survey.saveSuccess, '');
     router.replace(`/address/${encodeURIComponent(addressId)}`);
   };
 
   const ChoiceRow = <T extends string>(
-    options: { v: T; label: string }[],
-    current: T,
+    options: { v: T; label: string; desc?: string }[],
+    current: T | '',
     onChange: (v: T) => void,
     testIdPrefix?: string
   ) => (
@@ -175,26 +258,29 @@ export default function SurveyScreen() {
           testID={`${testIdPrefix || 'choice'}-${o.v}`}
         >
           <Text style={[styles.choiceTxt, current === o.v && styles.choiceTxtActive]}>{o.label}</Text>
+          {!!o.desc && (
+            <Text style={[styles.choiceDesc, current === o.v && styles.choiceDescActive]}>{o.desc}</Text>
+          )}
         </TouchableOpacity>
       ))}
     </View>
   );
 
-  const YesNo = (val: boolean, onChange: (v: boolean) => void, testID?: string) => (
+  const YesNo = (val: boolean | null, onChange: (v: boolean) => void, testID?: string) => (
     <View style={styles.yesnoRow}>
       <TouchableOpacity
-        style={[styles.yesno, val && styles.yesnoActive]}
+        style={[styles.yesno, val === true && styles.yesnoActive]}
         onPress={() => onChange(true)}
         testID={`${testID || 'yn'}-yes`}
       >
-        <Text style={[styles.yesnoTxt, val && styles.yesnoTxtActive]}>{t.survey.yes}</Text>
+        <Text style={[styles.yesnoTxt, val === true && styles.yesnoTxtActive]}>{t.survey.yes}</Text>
       </TouchableOpacity>
       <TouchableOpacity
-        style={[styles.yesno, !val && styles.yesnoActive]}
+        style={[styles.yesno, val === false && styles.yesnoActive]}
         onPress={() => onChange(false)}
         testID={`${testID || 'yn'}-no`}
       >
-        <Text style={[styles.yesnoTxt, !val && styles.yesnoTxtActive]}>{t.survey.no}</Text>
+        <Text style={[styles.yesnoTxt, val === false && styles.yesnoTxtActive]}>{t.survey.no}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -251,7 +337,7 @@ export default function SurveyScreen() {
               <Text style={styles.qTitle}>{t.survey.typeChoiceTitle}</Text>
               <Text style={styles.intro}>{t.survey.typeChoiceHint}</Text>
               <TouchableOpacity
-                style={[styles.typeCard, survey.survey_type === 'household' && styles.typeCardActive]}
+                style={[styles.typeCard, typeChosen && survey.survey_type === 'household' && styles.typeCardActive]}
                 onPress={() => chooseType('household')}
                 testID="type-choice-household"
               >
@@ -259,12 +345,20 @@ export default function SurveyScreen() {
                 <Text style={styles.typeDesc}>{t.survey.typeHouseholdDesc}</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.typeCard, survey.survey_type === 'commerce' && styles.typeCardActive]}
+                style={[styles.typeCard, typeChosen && survey.survey_type === 'commerce' && styles.typeCardActive]}
                 onPress={() => chooseType('commerce')}
                 testID="type-choice-commerce"
               >
                 <Text style={styles.typeTitle}>{t.survey.typeCommerce}</Text>
                 <Text style={styles.typeDesc}>{t.survey.typeCommerceDesc}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.typeCard, typeChosen && survey.survey_type === 'public' && styles.typeCardActive]}
+                onPress={() => chooseType('public')}
+                testID="type-choice-public"
+              >
+                <Text style={styles.typeTitle}>{t.survey.typePublic}</Text>
+                <Text style={styles.typeDesc}>{t.survey.typePublicDesc}</Text>
               </TouchableOpacity>
               <Text style={styles.code}>{addressId}</Text>
             </View>
@@ -303,10 +397,10 @@ export default function SurveyScreen() {
               {Q(t.survey.q_income_level)}
               {ChoiceRow<IncomeLevel>(
                 [
-                  { v: 'very_low', label: t.survey.opt_very_low },
-                  { v: 'low', label: t.survey.opt_low },
-                  { v: 'medium', label: t.survey.opt_medium },
-                  { v: 'high', label: t.survey.opt_high },
+                  { v: 'very_low', label: t.survey.opt_very_low, desc: t.survey.desc_very_low },
+                  { v: 'low', label: t.survey.opt_low, desc: t.survey.desc_low },
+                  { v: 'medium', label: t.survey.opt_medium, desc: t.survey.desc_medium },
+                  { v: 'high', label: t.survey.opt_high, desc: t.survey.desc_high },
                 ],
                 survey.income_level, (v) => set('income_level', v), 'income-level'
               )}
@@ -380,6 +474,7 @@ export default function SurveyScreen() {
           {stepKey === 'rooms' && (
             <View>
               {Q(t.survey.q_num_living_rooms)}
+              <Text style={styles.intro}>{t.survey.q_num_rooms_hint}</Text>
               {NumberField('', survey.num_living_rooms, (n) => set('num_living_rooms', n), 'num-rooms')}
             </View>
           )}
@@ -458,17 +553,70 @@ export default function SurveyScreen() {
               <TextInput style={styles.text} value={survey.commerce?.phone || ''}
                 onChangeText={(v) => setCommerce('phone', v)} keyboardType="phone-pad" testID="c-phone" />
               <Label>{t.survey.c_products}</Label>
-              <TextInput style={[styles.text, { height: 60 }]} multiline value={survey.commerce?.products || ''}
-                onChangeText={(v) => setCommerce('products', v)} testID="c-products" />
-              <Label>{t.survey.c_weekdays}</Label>
-              <TextInput style={styles.text} value={survey.commerce?.hours_weekdays || ''}
-                onChangeText={(v) => setCommerce('hours_weekdays', v)} testID="c-weekdays" />
-              <Label>{t.survey.c_saturday}</Label>
-              <TextInput style={styles.text} value={survey.commerce?.hours_saturday || ''}
-                onChangeText={(v) => setCommerce('hours_saturday', v)} testID="c-saturday" />
-              <Label>{t.survey.c_sunday}</Label>
-              <TextInput style={styles.text} value={survey.commerce?.hours_sunday || ''}
-                onChangeText={(v) => setCommerce('hours_sunday', v)} testID="c-sunday" />
+              <ProductsPicker
+                value={survey.commerce?.products || ''}
+                onChange={(v) => setCommerce('products', v)}
+                t={t}
+                language={language}
+              />
+              <HoursField
+                label={t.survey.c_weekdays}
+                value={survey.commerce?.hours_weekdays || ''}
+                onChange={(v) => setCommerce('hours_weekdays', v)}
+                t={t}
+                testID="c-weekdays"
+              />
+              <HoursField
+                label={t.survey.c_saturday}
+                value={survey.commerce?.hours_saturday || ''}
+                onChange={(v) => setCommerce('hours_saturday', v)}
+                t={t}
+                testID="c-saturday"
+              />
+              <HoursField
+                label={t.survey.c_sunday}
+                value={survey.commerce?.hours_sunday || ''}
+                onChange={(v) => setCommerce('hours_sunday', v)}
+                t={t}
+                testID="c-sunday"
+              />
+            </View>
+          )}
+
+          {stepKey === 'publicService' && (
+            <View testID="step-public">
+              {Q(t.survey.pub_title)}
+              <Label>{t.survey.pub_name}</Label>
+              <TextInput style={styles.text} value={survey.public_service?.name || ''}
+                onChangeText={(v) => setPublic('name', v)}
+                placeholder={t.survey.pub_namePh}
+                placeholderTextColor={Colors.textTertiary} testID="pub-name" />
+              <Label>{t.survey.pub_category}</Label>
+              {ChoiceRow<PublicCategory>([
+                { v: 'school', label: `🏫 ${t.survey.cat_school}` },
+                { v: 'health', label: `🏥 ${t.survey.cat_health}` },
+                { v: 'government', label: `🏛️ ${t.survey.cat_government}` },
+                { v: 'community', label: `🏟️ ${t.survey.cat_community}` },
+                { v: 'water_point', label: `⛲ ${t.survey.cat_water_point}` },
+                { v: 'antenna', label: `📡 ${t.survey.cat_antenna}` },
+                { v: 'religious', label: `⛪ ${t.survey.cat_religious}` },
+                { v: 'other', label: t.survey.opt_other },
+              ], survey.public_service?.category || '', (v) => setPublic('category', v), 'pub-cat')}
+              {survey.public_service?.category === 'other' && (
+                <TextInput style={styles.text} value={survey.public_service?.category_other || ''}
+                  onChangeText={(v) => setPublic('category_other', v)}
+                  placeholder={t.survey.pub_category_other}
+                  placeholderTextColor={Colors.textTertiary} testID="pub-cat-other" />
+              )}
+              <Label>{t.survey.pub_org}</Label>
+              <TextInput style={styles.text} value={survey.public_service?.managing_org || ''}
+                onChangeText={(v) => setPublic('managing_org', v)} testID="pub-org" />
+              <Label>{t.survey.pub_phone}</Label>
+              <TextInput style={styles.text} value={survey.public_service?.phone || ''}
+                onChangeText={(v) => setPublic('phone', v)} keyboardType="phone-pad" testID="pub-phone" />
+              <Label>{t.survey.pub_notes}</Label>
+              <TextInput style={[styles.text, { height: 60 }]} multiline value={survey.public_service?.notes || ''}
+                onChangeText={(v) => setPublic('notes', v)} testID="pub-notes" />
             </View>
           )}
 
@@ -479,53 +627,92 @@ export default function SurveyScreen() {
             </View>
           )}
 
-          {stepKey === 'personEntry' && (() => {
-            const p = survey.persons[personIdx] || emptyPerson();
-            return (
-              <View testID={`person-${personIdx}`}>
-                <Text style={styles.qTitle}>{t.survey.p_title} #{personIdx + 1}</Text>
-                <Label>{t.survey.p_name}</Label>
-                <TextInput style={styles.text} value={p.name} onChangeText={(v) => setPerson('name', v)} testID="p-name" />
-                <Label>{t.survey.p_phone_or_email}</Label>
-                <TextInput style={styles.text} value={p.phone_or_email}
-                  onChangeText={(v) => setPerson('phone_or_email', v)} testID="p-phone-email" />
-                <Label>{t.survey.p_age}</Label>
-                <TextInput
-                  testID="p-age" style={styles.text} value={String(p.age || 0)}
-                  keyboardType="number-pad"
-                  onChangeText={(v) => {
-                    const n = parseInt(v.replace(/\D/g, ''), 10);
-                    setPerson('age', Number.isFinite(n) ? n : 0);
-                  }}
-                />
-                <Label>{t.survey.p_gender}</Label>
-                {ChoiceRow<Gender>([
-                  { v: 'male', label: t.survey.opt_male },
-                  { v: 'female', label: t.survey.opt_female },
-                ], p.gender, (v) => setPerson('gender', v), 'p-gender')}
-                <Label>{t.survey.p_education}</Label>
-                {ChoiceRow<Education>([
-                  { v: 'primary', label: t.survey.opt_primary },
-                  { v: 'middle', label: t.survey.opt_middle },
-                  { v: 'high_school', label: t.survey.opt_high_school },
-                  { v: 'university', label: t.survey.opt_university },
-                  { v: 'none', label: t.survey.opt_no_school },
-                ], p.education, (v) => setPerson('education', v), 'p-edu')}
-                <Label>{t.survey.p_profession}</Label>
-                <TextInput style={styles.text} value={p.profession} onChangeText={(v) => setPerson('profession', v)} testID="p-profession" />
-                <Label>{t.survey.p_place}</Label>
-                <TextInput style={styles.text} value={p.frequented_place} onChangeText={(v) => setPerson('frequented_place', v)} testID="p-place" />
-              </View>
-            );
-          })()}
+          {stepKey === 'personEntry' && personMode === 'list' && (
+            <View testID="persons-list">
+              <Text style={styles.qTitle}>{t.survey.pl_listTitle} ({survey.persons.length})</Text>
+              {survey.persons.length === 0 && (
+                <Text style={styles.intro}>{t.survey.pl_none}</Text>
+              )}
+              {survey.persons.map((p, i) => (
+                <View key={i} style={styles.personCard} testID={`person-card-${i}`}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.personName}>{i + 1}. {p.name}</Text>
+                    <Text style={styles.personMeta}>
+                      {p.age} {t.survey.pl_years} • {p.gender === 'male' ? t.survey.opt_male : p.gender === 'female' ? t.survey.opt_female : '—'} • {p.profession || '—'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity style={styles.personBtn} onPress={() => startEditPerson(i)} testID={`person-edit-${i}`}>
+                    <Ionicons name="pencil" size={18} color={Colors.primary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.personBtn} onPress={() => confirmDeletePerson(i)} testID={`person-delete-${i}`}>
+                    <Ionicons name="trash-outline" size={18} color={Colors.error} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <Button
+                label={`+ ${t.survey.pl_add}`}
+                variant="secondary"
+                onPress={startAddPerson}
+                testID="add-person-btn"
+                style={{ marginTop: Spacing.sm }}
+              />
+            </View>
+          )}
+
+          {stepKey === 'personEntry' && personMode === 'form' && (
+            <View testID="person-form">
+              <Text style={styles.qTitle}>
+                {editingIdx !== null ? `${t.survey.pl_edit} — ${t.survey.p_title} #${editingIdx + 1}` : t.survey.pl_add}
+              </Text>
+              <Label>{t.survey.p_name}</Label>
+              <TextInput style={styles.text} value={personDraft.name} onChangeText={(v) => setDraftField('name', v)} testID="p-name" />
+              <Label>{t.survey.p_phone_or_email}</Label>
+              <TextInput style={styles.text} value={personDraft.phone_or_email}
+                onChangeText={(v) => setDraftField('phone_or_email', v)} testID="p-phone-email" />
+              <Label>{t.survey.p_age}</Label>
+              <TextInput
+                testID="p-age" style={styles.text} value={String(personDraft.age || 0)}
+                keyboardType="number-pad"
+                onChangeText={(v) => {
+                  const n = parseInt(v.replace(/\D/g, ''), 10);
+                  setDraftField('age', Number.isFinite(n) ? n : 0);
+                }}
+              />
+              <Label>{t.survey.p_gender}</Label>
+              {ChoiceRow<Gender>([
+                { v: 'male', label: t.survey.opt_male },
+                { v: 'female', label: t.survey.opt_female },
+              ], personDraft.gender, (v) => setDraftField('gender', v), 'p-gender')}
+              <Label>{t.survey.p_education}</Label>
+              {ChoiceRow<Education>([
+                { v: 'primary', label: t.survey.opt_primary },
+                { v: 'middle', label: t.survey.opt_middle },
+                { v: 'high_school', label: t.survey.opt_high_school },
+                { v: 'university', label: t.survey.opt_university },
+                { v: 'none', label: t.survey.opt_no_school },
+              ], personDraft.education, (v) => setDraftField('education', v), 'p-edu')}
+              <Label>{t.survey.p_profession}</Label>
+              <TextInput style={styles.text} value={personDraft.profession} onChangeText={(v) => setDraftField('profession', v)} testID="p-profession" />
+              <Label>{t.survey.p_place}</Label>
+              <TextInput style={styles.text} value={personDraft.frequented_place} onChangeText={(v) => setDraftField('frequented_place', v)} testID="p-place" />
+            </View>
+          )}
 
           {stepKey === 'summary' && (
             <View testID="step-summary">
               <Text style={styles.qTitle}>{t.survey.summaryTitle}</Text>
-              <View style={[styles.tagBanner, survey.survey_type === 'commerce' ? styles.tagCommerce : styles.tagHousehold]}>
-                <Ionicons name={survey.survey_type === 'commerce' ? 'storefront' : 'home'} size={14} color={Colors.white} />
+              <View style={[styles.tagBanner,
+                survey.survey_type === 'commerce' ? styles.tagCommerce
+                : survey.survey_type === 'public' ? styles.tagPublic
+                : styles.tagHousehold]}>
+                <Ionicons
+                  name={survey.survey_type === 'commerce' ? 'storefront' : survey.survey_type === 'public' ? 'business' : 'home'}
+                  size={14} color={Colors.white}
+                />
                 <Text style={styles.tagBannerTxt}>
-                  {survey.survey_type === 'commerce' ? t.survey.typeCommerce : t.survey.typeHousehold}
+                  {survey.survey_type === 'commerce' ? t.survey.typeCommerce
+                    : survey.survey_type === 'public' ? t.survey.typePublic
+                    : t.survey.typeHousehold}
                 </Text>
               </View>
               {survey.survey_type === 'household' && (
@@ -533,7 +720,7 @@ export default function SurveyScreen() {
                   <Card title={t.survey.summaryPersons}>
                     {survey.persons.map((p, i) => (
                       <Text key={i} style={styles.summaryLine}>
-                        {i + 1}. {p.name} • {p.age} • {t.survey[`opt_${p.gender}` as 'opt_male' | 'opt_female']} • {p.profession || '—'}
+                        {i + 1}. {p.name} • {p.age} • {p.gender === 'male' ? t.survey.opt_male : p.gender === 'female' ? t.survey.opt_female : '—'} • {p.profession || '—'}
                       </Text>
                     ))}
                   </Card>
@@ -553,8 +740,25 @@ export default function SurveyScreen() {
                 <Card title={t.survey.summaryCommerce}>
                   <Text style={styles.summaryLine}>{survey.commerce?.name} — {survey.commerce?.owner}</Text>
                   <Text style={styles.summaryLine}>{survey.commerce?.products}</Text>
-                  <Text style={styles.summaryLine}>📞 {survey.commerce?.phone}</Text>
-                  <Text style={styles.summaryLine}>🕐 {survey.commerce?.hours_weekdays || '—'}</Text>
+                  <Text style={styles.summaryLine}>📞 {survey.commerce?.phone || '—'}</Text>
+                  <Text style={styles.summaryLine}>🕐 {t.survey.c_weekdays}: {formatHours(survey.commerce?.hours_weekdays || '', t)}</Text>
+                  <Text style={styles.summaryLine}>🕐 {t.survey.c_saturday}: {formatHours(survey.commerce?.hours_saturday || '', t)}</Text>
+                  <Text style={styles.summaryLine}>🕐 {t.survey.c_sunday}: {formatHours(survey.commerce?.hours_sunday || '', t)}</Text>
+                </Card>
+              )}
+              {survey.survey_type === 'public' && (
+                <Card title={t.survey.summaryPublic}>
+                  <Text style={styles.summaryLine}>{survey.public_service?.name}</Text>
+                  <Text style={styles.summaryLine}>
+                    {survey.public_service?.category === 'other'
+                      ? survey.public_service?.category_other
+                      : survey.public_service?.category
+                        ? t.survey[`cat_${survey.public_service.category}` as keyof typeof t.survey] as string
+                        : '—'}
+                  </Text>
+                  {!!survey.public_service?.managing_org && <Text style={styles.summaryLine}>🏢 {survey.public_service.managing_org}</Text>}
+                  {!!survey.public_service?.phone && <Text style={styles.summaryLine}>📞 {survey.public_service.phone}</Text>}
+                  {!!survey.public_service?.notes && <Text style={styles.summaryLine}>📝 {survey.public_service.notes}</Text>}
                 </Card>
               )}
             </View>
@@ -570,7 +774,7 @@ export default function SurveyScreen() {
       </KeyboardAvoidingView>
 
       <View style={styles.footer}>
-        {stepKey !== 'typeChoice' && stepKey !== 'intro' && (
+        {stepKey !== 'typeChoice' && stepKey !== 'intro' && !(stepKey === 'personEntry' && personMode === 'form') && (
           <Button label={t.survey.back} variant="secondary" style={{ flex: 1 }} onPress={goBack} />
         )}
         {stepKey === 'typeChoice' ? (
@@ -579,10 +783,14 @@ export default function SurveyScreen() {
         ) : stepKey === 'summary' ? (
           <Button label={t.survey.save} variant="accent" style={{ flex: 1 }} onPress={onSave} testID="save-survey-btn" />
         ) : stepKey === 'personEntry' ? (
-          <>
-            <Button label={t.survey.p_addAnother} variant="primary" style={{ flex: 1 }} onPress={addAnotherPerson} testID="add-person-btn" />
+          personMode === 'form' ? (
+            <>
+              <Button label={t.common.cancel} variant="secondary" style={{ flex: 1 }} onPress={() => { setPersonMode('list'); setErrorMsg(''); }} testID="person-cancel-btn" />
+              <Button label={t.survey.pl_save} variant="primary" style={{ flex: 1 }} onPress={savePersonDraft} testID="person-save-btn" />
+            </>
+          ) : (
             <Button label={t.survey.p_done} variant="accent" style={{ flex: 1 }} onPress={finishPersons} testID="finish-persons-btn" />
-          </>
+          )
         ) : (
           <Button label={stepKey === 'intro' ? t.survey.start : t.survey.next} variant="primary" style={{ flex: 1 }} onPress={goNext} testID="survey-next-btn" />
         )}
@@ -619,6 +827,16 @@ const styles = StyleSheet.create({
   choiceActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   choiceTxt: { ...Typography.body, fontFamily: 'DMSans_500Medium', color: Colors.textPrimary },
   choiceTxtActive: { color: Colors.white },
+  choiceDesc: { ...Typography.caption, color: Colors.textSecondary, marginTop: 4, lineHeight: 16 },
+  choiceDescActive: { color: 'rgba(255,255,255,0.85)' },
+  personCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: Colors.card, borderRadius: Radius.md,
+    padding: Spacing.md, marginBottom: 8, ...Shadows.card,
+  },
+  personName: { ...Typography.label, color: Colors.textPrimary },
+  personMeta: { ...Typography.caption, color: Colors.textSecondary, marginTop: 2 },
+  personBtn: { padding: 8 },
   yesnoRow: { flexDirection: 'row', gap: Spacing.md, marginBottom: Spacing.md },
   yesno: { flex: 1, height: 60, borderRadius: Radius.md, borderWidth: 2, borderColor: Colors.divider, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.card },
   yesnoActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
@@ -641,5 +859,6 @@ const styles = StyleSheet.create({
   tagBanner: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 6, borderRadius: Radius.pill, marginBottom: Spacing.sm },
   tagHousehold: { backgroundColor: Colors.primary },
   tagCommerce: { backgroundColor: Colors.accent },
+  tagPublic: { backgroundColor: '#8B5CF6' },
   tagBannerTxt: { color: Colors.white, fontFamily: 'DMSans_700Bold', fontSize: 12 },
 });

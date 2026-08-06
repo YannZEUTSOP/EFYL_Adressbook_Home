@@ -1,4 +1,5 @@
 // Survey types - mirror backend models exactly
+// Choice fields use '' (or null for booleans) to mean "not answered yet" — no defaults.
 export type Gender = 'male' | 'female';
 export type Education = 'primary' | 'middle' | 'high_school' | 'university' | 'none';
 export type IncomeLevel = 'very_low' | 'low' | 'medium' | 'high';
@@ -7,14 +8,15 @@ export type Toilets = 'flush' | 'traditional' | 'other';
 export type KitchenPosition = 'room' | 'living_room' | 'separate';
 export type WallMaterial = 'concrete' | 'adobe' | 'wood' | 'other';
 export type RoofMaterial = 'metal' | 'wood' | 'plastic' | 'concrete' | 'other';
+export type PublicCategory = 'school' | 'health' | 'government' | 'community' | 'water_point' | 'antenna' | 'religious' | 'other';
 
 export type Person = {
   id?: string;
   name: string;
   phone_or_email: string;
   age: number;
-  gender: Gender;
-  education: Education;
+  gender: Gender | '';
+  education: Education | '';
   profession: string;
   frequented_place: string;
 };
@@ -29,7 +31,16 @@ export type Commerce = {
   hours_sunday: string;
 };
 
-export type SurveyType = 'household' | 'commerce';
+export type SurveyType = 'household' | 'commerce' | 'public';
+
+export type PublicService = {
+  name: string;
+  category: PublicCategory | '';
+  category_other: string;
+  managing_org: string;
+  phone: string;
+  notes: string;
+};
 
 export type HouseholdSurvey = {
   id?: string;
@@ -39,27 +50,29 @@ export type HouseholdSurvey = {
   total_persons: number;
   main_income_source: string;
   other_income_sources: string;
-  income_level: IncomeLevel;
+  income_level: IncomeLevel | '';
   num_phones: number;
-  has_internet: boolean;
-  electricity: Utility;
-  water: Utility;
-  toilets: Toilets;
+  has_internet: boolean | null;
+  electricity: Utility | '';
+  water: Utility | '';
+  toilets: Toilets | '';
   toilets_other: string;
-  kitchen_position: KitchenPosition;
+  kitchen_position: KitchenPosition | '';
   num_living_rooms: number;
   num_floors: number;
-  wall_materials: WallMaterial;
+  wall_materials: WallMaterial | '';
   wall_materials_other: string;
-  has_glass_windows: boolean;
-  roof_materials: RoofMaterial;
+  has_glass_windows: boolean | null;
+  roof_materials: RoofMaterial | '';
   roof_materials_other: string;
   vehicles_bicycles: number;
   vehicles_motorcycles: number;
   vehicles_cars: number;
   vehicles_trucks: number;
   is_commerce: boolean;
+  is_public: boolean;
   commerce: Commerce | null;
+  public_service: PublicService | null;
   persons: Person[];
   created_at?: string;
 };
@@ -71,36 +84,42 @@ export const emptySurvey = (address_id: string, survey_type: SurveyType = 'house
   total_persons: 1,
   main_income_source: '',
   other_income_sources: '',
-  income_level: 'low',
+  income_level: '',
   num_phones: 0,
-  has_internet: false,
-  electricity: 'none',
-  water: 'none',
-  toilets: 'traditional',
+  has_internet: null,
+  electricity: '',
+  water: '',
+  toilets: '',
   toilets_other: '',
-  kitchen_position: 'room',
+  kitchen_position: '',
   num_living_rooms: 1,
   num_floors: 1,
-  wall_materials: 'concrete',
+  wall_materials: '',
   wall_materials_other: '',
-  has_glass_windows: false,
-  roof_materials: 'metal',
+  has_glass_windows: null,
+  roof_materials: '',
   roof_materials_other: '',
   vehicles_bicycles: 0,
   vehicles_motorcycles: 0,
   vehicles_cars: 0,
   vehicles_trucks: 0,
   is_commerce: survey_type === 'commerce',
+  is_public: survey_type === 'public',
   commerce: survey_type === 'commerce' ? emptyCommerce() : null,
+  public_service: survey_type === 'public' ? emptyPublicService() : null,
   persons: [],
 });
 
 export const emptyPerson = (): Person => ({
-  name: '', phone_or_email: '', age: 0, gender: 'male',
-  education: 'none', profession: '', frequented_place: '',
+  name: '', phone_or_email: '', age: 0, gender: '',
+  education: '', profession: '', frequented_place: '',
 });
 
 export const emptyCommerce = (): Commerce => ({
   name: '', owner: '', phone: '', products: '',
   hours_weekdays: '', hours_saturday: '', hours_sunday: '',
+});
+
+export const emptyPublicService = (): PublicService => ({
+  name: '', category: '', category_other: '', managing_org: '', phone: '', notes: '',
 });

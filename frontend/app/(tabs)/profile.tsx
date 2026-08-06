@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Platform, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -7,7 +7,7 @@ import { Colors, Radius, Shadows, Spacing, Typography } from '../../src/theme';
 import { useApp } from '../../src/contexts/AppContext';
 import { Storage } from '../../src/services/storage';
 import { Button } from '../../src/components/Button';
-import { Api } from '../../src/services/api';
+import { exportLocalData } from '../../src/utils/exportData';
 
 export default function ProfileTab() {
   const {
@@ -45,11 +45,11 @@ export default function ProfileTab() {
   };
 
   const onExport = async (kind: 'csv' | 'json') => {
-    const url = kind === 'csv' ? Api.exportCsvUrl() : Api.exportJsonUrl();
     try {
-      await Linking.openURL(url);
+      // Local export: includes ALL addresses on this device (synced or not)
+      await exportLocalData(kind);
     } catch {
-      Alert.alert('Export', "Impossible d'ouvrir le lien d'export.");
+      Alert.alert('Export', "L'export a échoué. Réessayez.");
     }
   };
 

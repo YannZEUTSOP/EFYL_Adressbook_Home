@@ -173,11 +173,12 @@ class TestCommercesEndpoint:
         assert ADDR_A_HOUSE not in ids, "Household leaked into /commerces"
         assert ADDR_B_HOUSE not in ids, "Household leaked into /commerces"
 
-    def test_commerces_all_have_is_commerce_true(self, client):
+    def test_commerces_all_have_is_commerce_or_public_true(self, client):
+        # v3: /commerces now also returns public buildings (is_public=True)
         r = client.get(f"{API}/commerces", timeout=15)
         assert r.status_code == 200
         for item in r.json():
-            assert item["is_commerce"] is True, item
+            assert item.get("is_commerce") is True or item.get("is_public") is True, item
 
 
 # ----------------------- /api/addresses include_public_commerces -----------------------

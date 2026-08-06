@@ -14,6 +14,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export type AddressPhoto = {
+  base64: string;
+  lat: number | null;
+  lng: number | null;
+  bearing: number | null;   // compass direction of the camera when the photo was taken
+  taken_at: string;
+};
+
 export type AddressDTO = {
   id: string;
   address_id: string;
@@ -33,12 +41,14 @@ export type AddressDTO = {
   low_accuracy?: boolean;
   azimuth_degrees?: number | null;
   photo_base64?: string | null;
+  photos?: AddressPhoto[] | null;
   lat_raw?: number | null;
   lng_raw?: number | null;
   lat_corrected?: number | null;
   lng_corrected?: number | null;
   has_survey?: boolean;
   is_commerce?: boolean;
+  is_public?: boolean;
   created_at: string;
 };
 
