@@ -606,7 +606,7 @@ export default function SurveyScreen() {
                 <TextInput style={styles.text} value={survey.public_service?.category_other || ''}
                   onChangeText={(v) => setPublic('category_other', v)}
                   placeholder={t.survey.pub_category_other}
-                  placeholderTextColor={Colors.textTertiary} testID="pub-cat-other" />
+                  placeholderTextColor={Colors.textTertiary} testID="pub-cat-other-input" />
               )}
               <Label>{t.survey.pub_org}</Label>
               <TextInput style={styles.text} value={survey.public_service?.managing_org || ''}

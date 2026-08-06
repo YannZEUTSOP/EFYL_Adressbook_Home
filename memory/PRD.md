@@ -79,3 +79,15 @@ See /app/memory/test_credentials.md
 - PENDING: account is TRIAL → SMS only to numbers verified in Twilio console. For public launch, user must upgrade Twilio account (add payment). Cost ≈ $0.37/successful login to Cameroon.
 - UPDATE: At user request, Twilio keys temporarily COMMENTED OUT in backend/.env (mock 123456 active) until user upgrades his Trial account. Re-enable = uncomment 3 lines + restart backend.
 - Session design confirmed: AsyncStorage login never expires (logout only manual) → one SMS per user lifetime, minimal SMS cost.
+
+## Field-tester feedback batch (v3) — August 2026
+All feedback from user's tester in Spain implemented & tested (iteration_6, 57/57 backend + full frontend pass):
+- Satellite correction: Esri Hybrid tiles (imagery+roads+labels), full-height map, blue original GPS pin + orange draggable pin + dashed line, button "Enregistrer et continuer" after drag. Both raw & corrected coords already saved (confirmed).
+- CSV/JSON export now CLIENT-SIDE from local storage (src/utils/exportData.ts): includes ALL addresses even unsynced; web=blob download, native=expo-sharing.
+- Survey: NO defaults on any multiple choice (types allow ''/null, backend relaxed Literal→str); "Autre"→mandatory conditional text everywhere; income levels with FCFA guidance descriptions; rewordings (water/kitchen/rooms).
+- Persons in wizard: list view + add/edit/delete with confirm; PersonsManager also requires gender/education.
+- NEW 3rd survey type 'public' (Service public): PublicService model {name, category(8 cats), category_other, managing_org, phone, notes}; is_public propagated to address; visible on community map (violet pins) & /api/commerces.
+- Commerce: HoursField structured picker (Open/Closed + hour/minute modal, format "HH:MM-HH:MM"|"closed", invalid impossible); ProductsPicker (21 predefined FR/EN products multi-select + custom add, stored comma-separated).
+- Photos: up to 5 per address, each {base64,lat,lng,bearing,taken_at} (GPS via getLastKnownPositionAsync + heading at capture); delete with confirm; gallery on address detail. Address.photos in backend + photos_count in CSV.
+- Compass: Location.watchHeadingAsync (sensor fusion, works phone upright) with magnetometer fallback; camera-aim mode: point camera at entrance, live heading overlay, capture locks azimuth + saves photo. NATIVE-ONLY (needs Expo Go/build for field test).
+- Field test protocol for compass: pending user verification on 2-5 real buildings.
