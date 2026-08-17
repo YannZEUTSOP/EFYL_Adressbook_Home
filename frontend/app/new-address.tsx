@@ -379,10 +379,26 @@ export default function NewAddress() {
     try {
       if (!cameraRef.current) return;
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.4, base64: true, skipProcessing: false,
+        quality: 0.7, base64: true, skipProcessing: false,
       });
-      if (photo?.base64) {
-        await addCapturedPhoto(photo.base64, cameraMode === 'azimuth');
+      if (!photo) { setCameraOpen(false); return; }
+      // Downscale before storing: raw camera photos are 1-3 MB and would
+      // saturate AsyncStorage (6 MB Android limit) after a few addresses.
+      // 640px @ 0.4 ≈ 40-60 KB per photo — same spirit as the web path (800px).
+      let base64: string | null = null;
+      try {
+        const { manipulateAsync, SaveFormat } = require('expo-image-manipulator');
+        const small = await manipulateAsync(
+          photo.uri,
+          [{ resize: { width: 640 } }],
+          { compress: 0.4, format: SaveFormat.JPEG, base64: true }
+        );
+        base64 = small?.base64 || null;
+      } catch {
+        base64 = photo.base64 || null; // fallback: unresized capture
+      }
+      if (base64) {
+        await addCapturedPhoto(base64, cameraMode === 'azimuth');
       }
       setCameraOpen(false);
     } catch (e) {

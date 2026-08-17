@@ -102,3 +102,4 @@ All feedback from user's tester in Spain implemented & tested (iteration_6, 57/5
 - GPS-correction step 4 CTA: "Continuer sans corriger" ↔ "Enregistrer et continuer" after pin drag.
 - Camera permission flow with canAskAgain + Réglages redirect.
 - SECURITY FIX: GET /api/addresses/{id} cross-owner fallback now restricted to is_commerce|is_public|is_heritage — private households return 404 for other users (per EFYL_STOCKAGE_ET_SCENARIOS_FR.md §3; QR share unaffected: QR payload imports locally).
+- FIELD-DAY FIX (pre-test): native camera photos are now downscaled with expo-image-manipulator (640px, compress 0.4, ~40-60 KB base64) before local storage — prevents AsyncStorage saturation (6 MB Android limit) that raw 1-3 MB captures would have caused after ~10 photos. Web path already downscaled (800px).
