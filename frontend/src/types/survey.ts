@@ -9,6 +9,18 @@ export type KitchenPosition = 'room' | 'living_room' | 'separate';
 export type WallMaterial = 'concrete' | 'adobe' | 'wood' | 'other';
 export type RoofMaterial = 'metal' | 'wood' | 'plastic' | 'concrete' | 'other';
 export type PublicCategory = 'school' | 'health' | 'government' | 'community' | 'water_point' | 'antenna' | 'religious' | 'other';
+export type HeritageKind = 'sacred' | 'tourist' | 'both';
+export type HeritageAccess = 'free' | 'paid' | 'permission';
+export type RoadAccess = 'good' | 'average' | 'difficult';
+export type PlaceCategory = 'shop' | 'work' | 'school' | 'leisure' | 'friend';
+export type PlaceFrequency = 'daily' | 'weekly' | 'monthly' | 'rarely';
+
+export type PersonPlace = {
+  category: PlaceCategory | '';
+  name: string;
+  frequency: PlaceFrequency | '';
+  reason: string;
+};
 
 export type Person = {
   id?: string;
@@ -19,6 +31,7 @@ export type Person = {
   education: Education | '';
   profession: string;
   frequented_place: string;
+  places: PersonPlace[];
 };
 
 export type Commerce = {
@@ -31,7 +44,7 @@ export type Commerce = {
   hours_sunday: string;
 };
 
-export type SurveyType = 'household' | 'commerce' | 'public';
+export type SurveyType = 'household' | 'commerce' | 'public' | 'heritage';
 
 export type PublicService = {
   name: string;
@@ -42,11 +55,31 @@ export type PublicService = {
   notes: string;
 };
 
+export type HeritageSite = {
+  name: string;
+  kind: HeritageKind | '';
+  category: string;              // chiefdom|sacred_forest|worship|tomb|waterfall|cave|museum|monument|viewpoint|craft_market|other
+  category_other: string;
+  description: string;
+  manager: string;
+  access: HeritageAccess | '';
+  entry_fee: string;
+  hours: string;                 // "HH:MM-HH:MM" | "closed" | ""
+  best_period: string;
+  photos_allowed: boolean | null;
+  restrictions: string;
+  facilities: string;            // comma-separated: parking, toilets, guide, food, lodging
+  road_access: RoadAccess | '';
+  phone: string;
+  notes: string;
+};
+
 export type HouseholdSurvey = {
   id?: string;
   address_id: string;
   owner_id?: string;
   survey_type: SurveyType;
+  family_name: string;
   total_persons: number;
   main_income_source: string;
   other_income_sources: string;
@@ -71,8 +104,10 @@ export type HouseholdSurvey = {
   vehicles_trucks: number;
   is_commerce: boolean;
   is_public: boolean;
+  is_heritage: boolean;
   commerce: Commerce | null;
   public_service: PublicService | null;
+  heritage: HeritageSite | null;
   persons: Person[];
   created_at?: string;
 };
@@ -81,6 +116,7 @@ export const emptySurvey = (address_id: string, survey_type: SurveyType = 'house
   address_id,
   owner_id: 'guest',
   survey_type,
+  family_name: '',
   total_persons: 1,
   main_income_source: '',
   other_income_sources: '',
@@ -105,14 +141,20 @@ export const emptySurvey = (address_id: string, survey_type: SurveyType = 'house
   vehicles_trucks: 0,
   is_commerce: survey_type === 'commerce',
   is_public: survey_type === 'public',
+  is_heritage: survey_type === 'heritage',
   commerce: survey_type === 'commerce' ? emptyCommerce() : null,
   public_service: survey_type === 'public' ? emptyPublicService() : null,
+  heritage: survey_type === 'heritage' ? emptyHeritage() : null,
   persons: [],
 });
 
 export const emptyPerson = (): Person => ({
   name: '', phone_or_email: '', age: 0, gender: '',
-  education: '', profession: '', frequented_place: '',
+  education: '', profession: '', frequented_place: '', places: [],
+});
+
+export const emptyPlace = (): PersonPlace => ({
+  category: '', name: '', frequency: '', reason: '',
 });
 
 export const emptyCommerce = (): Commerce => ({
@@ -122,4 +164,10 @@ export const emptyCommerce = (): Commerce => ({
 
 export const emptyPublicService = (): PublicService => ({
   name: '', category: '', category_other: '', managing_org: '', phone: '', notes: '',
+});
+
+export const emptyHeritage = (): HeritageSite => ({
+  name: '', kind: '', category: '', category_other: '', description: '', manager: '',
+  access: '', entry_fee: '', hours: '', best_period: '', photos_allowed: null,
+  restrictions: '', facilities: '', road_access: '', phone: '', notes: '',
 });

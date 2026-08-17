@@ -36,6 +36,7 @@ export type AddressDTO = {
   contact_phone?: string;
   notes?: string;
   owner_id?: string;
+  owner_name?: string;   // surveyor display name (tracking)
   verified: boolean;
   flag_count: number;
   low_accuracy?: boolean;
@@ -49,6 +50,7 @@ export type AddressDTO = {
   has_survey?: boolean;
   is_commerce?: boolean;
   is_public?: boolean;
+  is_heritage?: boolean;
   created_at: string;
 };
 
@@ -61,6 +63,13 @@ export const Api = {
     ),
   listCommerces: (q?: string) =>
     request<AddressDTO[]>(`/commerces${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  // Admin dashboard (PIN-protected)
+  adminOverview: (pin: string) =>
+    request<any>(`/admin/overview?pin=${encodeURIComponent(pin)}`),
+  adminAddresses: (pin: string, limit = 300) =>
+    request<any[]>(`/admin/addresses?pin=${encodeURIComponent(pin)}&limit=${limit}`),
+  adminExportCsvUrl: (pin: string) =>
+    `${BASE}/api/admin/export/csv?pin=${encodeURIComponent(pin)}`,
   getAddress: (addressId: string, ownerId = 'guest') =>
     request<AddressDTO>(`/addresses/${encodeURIComponent(addressId)}?owner_id=${encodeURIComponent(ownerId)}`),
   createAddress: (data: Partial<AddressDTO>) =>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Platform, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -13,9 +13,13 @@ export default function ProfileTab() {
   const {
     t, language, setLanguage, user, setUser,
     addresses, syncQueueCount, lastSync, syncNow, isOnline,
+    surveyorName, setSurveyorName,
   } = useApp();
   const router = useRouter();
   const [syncing, setSyncing] = useState(false);
+  const [nameDraft, setNameDraft] = useState(surveyorName);
+
+  React.useEffect(() => { setNameDraft(surveyorName); }, [surveyorName]);
 
   const surveyCount = addresses.filter((a) => a.has_survey).length;
 
@@ -79,6 +83,26 @@ export default function ProfileTab() {
           )}
         </View>
 
+        <Section title={t.profile.surveyorName}>
+          <Text style={styles.metaTxt}>{t.profile.surveyorNameHint}</Text>
+          <TextInput
+            style={styles.nameInput}
+            value={nameDraft}
+            onChangeText={setNameDraft}
+            placeholder={t.profile.surveyorNamePh}
+            placeholderTextColor={Colors.textTertiary}
+            testID="surveyor-name-input"
+          />
+          {nameDraft.trim() !== surveyorName && (
+            <Button
+              label={t.profile.surveyorNameSave}
+              variant="secondary"
+              onPress={() => setSurveyorName(nameDraft.trim())}
+              testID="surveyor-name-save"
+            />
+          )}
+        </Section>
+
         <Section title={t.profile.language}>
           <View style={styles.row}>
             <TouchableOpacity style={[styles.langChip, language === 'fr' && styles.langChipActive]} onPress={() => setLanguage('fr')} testID="profile-lang-fr">
@@ -103,6 +127,7 @@ export default function ProfileTab() {
               : (lastSync ? `${t.profile.lastSynced}: ${new Date(lastSync).toLocaleString()}` : '—')}
           </Text>
           <Text style={styles.autoSyncHint}>✨ {t.profile.autoSync}</Text>
+          <Text style={styles.metaTxt}>{t.profile.syncExplain}</Text>
           <View style={{ height: Spacing.sm }} />
           <Button label={t.profile.syncNow} onPress={onSync} loading={syncing} testID="sync-now-btn" />
         </Section>
@@ -127,6 +152,13 @@ export default function ProfileTab() {
           <TouchableOpacity style={styles.linkRow} onPress={onResetData} testID="reset-data-btn">
             <Ionicons name="trash-outline" size={18} color={Colors.error} />
             <Text style={[styles.linkTxt, { color: Colors.error }]}>{t.profile.deleteData}</Text>
+          </TouchableOpacity>
+        </Section>
+
+        <Section title="Admin">
+          <TouchableOpacity style={styles.linkRow} onPress={() => router.push('/admin')} testID="goto-admin-btn">
+            <Ionicons name="stats-chart" size={18} color={Colors.primary} />
+            <Text style={[styles.linkTxt, { color: Colors.primary }]}>{t.profile.adminDashboard}</Text>
           </TouchableOpacity>
         </Section>
 
@@ -171,4 +203,10 @@ const styles = StyleSheet.create({
   autoSyncHint: { ...Typography.caption, color: Colors.primary, marginTop: 4, fontFamily: 'DMSans_500Medium' },
   linkRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: 4 },
   linkTxt: { ...Typography.label },
+  nameInput: {
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.divider,
+    borderRadius: Radius.md, paddingHorizontal: Spacing.md, height: 46,
+    fontFamily: 'DMSans_500Medium', fontSize: 15, color: Colors.textPrimary,
+    marginVertical: Spacing.sm,
+  },
 });

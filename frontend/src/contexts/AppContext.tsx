@@ -13,6 +13,10 @@ type Ctx = {
   t: Strings;
   user: UserState;
   setUser: (u: UserState) => Promise<void>;
+  deviceId: string;
+  ownerId: string;
+  surveyorName: string;
+  setSurveyorName: (n: string) => Promise<void>;
   addresses: AddressDTO[];
   publicCommerces: AddressDTO[];
   refreshAddresses: () => Promise<void>;
@@ -38,6 +42,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [ready, setReady] = useState(false);
   const [language, setLanguageState] = useState<Lang>('fr');
   const [user, setUserState] = useState<UserState>({ loggedIn: false });
+  const [deviceId, setDeviceId] = useState<string>('');
+  const [surveyorName, setSurveyorNameState] = useState<string>('');
   const [addresses, setAddresses] = useState<AddressDTO[]>([]);
   const [publicCommerces, setPublicCommerces] = useState<AddressDTO[]>([]);
   const [syncQueueCount, setSyncQueueCount] = useState(0);
@@ -47,16 +53,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     (async () => {
-      const [prefs, u, list, q, sq, ls] = await Promise.all([
+      const [prefs, u, list, q, sq, ls, devId] = await Promise.all([
         Storage.getPrefs(),
         Storage.getUser(),
         Storage.getAddresses(),
         Storage.getSyncQueue(),
         Storage.getSurveyQueue(),
         Storage.getLastSync(),
+        Storage.getDeviceId(),
       ]);
       setLanguageState(prefs.language);
+      setSurveyorNameState(prefs.surveyorName || '');
       setUserState(u);
+      setDeviceId(devId);
       let initialList = list;
       if (!list.length) {
         await Storage.setAddresses(DEMO_ADDRESSES);
@@ -85,9 +94,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
 
+  // Stable identity of this surveyor: logged-in user id, else per-device guest id.
+  const ownerId = useMemo(
+    () => (user.loggedIn && user.userId ? user.userId : deviceId ? `guest-${deviceId}` : 'guest'),
+    [user.loggedIn, user.userId, deviceId]
+  );
+
   const setLanguage = useCallback(async (l: Lang) => {
     setLanguageState(l);
-    await Storage.setPrefs({ language: l } as Prefs);
+    const prefs = await Storage.getPrefs();
+    await Storage.setPrefs({ ...prefs, language: l });
+  }, []);
+
+  const setSurveyorName = useCallback(async (n: string) => {
+    setSurveyorNameState(n);
+    const prefs = await Storage.getPrefs();
+    await Storage.setPrefs({ ...prefs, surveyorName: n });
   }, []);
 
   const setUser = useCallback(async (u: UserState) => {
@@ -103,12 +125,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const refreshPublicCommerces = useCallback(async () => {
     try {
       const list = await Api.listCommerces();
-      const ownerId = user.userId || 'guest';
       setPublicCommerces(list.filter((c) => c.owner_id !== ownerId));
     } catch {
       // network down — keep current value
     }
-  }, [user.userId]);
+  }, [ownerId]);
 
   useEffect(() => {
     if (ready) refreshPublicCommerces();
@@ -147,11 +168,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [refreshQueueCount]);
 
   const saveSurvey = useCallback(async (s: HouseholdSurvey) => {
-    await Storage.upsertSurvey(s);
+    const stamped: HouseholdSurvey = { ...s, owner_id: ownerId };
+    await Storage.upsertSurvey(stamped);
+    await Storage.removeSurveyDraft(s.address_id);
     const list = await Storage.getAddresses();
     const next = list.map((a) =>
       a.address_id === s.address_id
-        ? { ...a, has_survey: true, is_commerce: s.survey_type === 'commerce', is_public: s.survey_type === 'public' }
+        ? {
+            ...a,
+            has_survey: true,
+            is_commerce: s.survey_type === 'commerce',
+            is_public: s.survey_type === 'public',
+            is_heritage: s.survey_type === 'heritage',
+          }
         : a
     );
     await Storage.setAddresses(next);
@@ -159,12 +188,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const op: SurveySyncOp = {
       id: `${s.address_id}-survey-${Date.now()}`,
       op: 'UPSERT',
-      payload: s,
+      payload: stamped,
       createdAt: new Date().toISOString(),
     };
     await Storage.enqueueSurveySync(op);
     await refreshQueueCount();
-  }, [refreshQueueCount]);
+  }, [refreshQueueCount, ownerId]);
 
   const getLocalSurvey = useCallback(async (addressId: string) => {
     const map = await Storage.getSurveys();
@@ -246,25 +275,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       for (const d of deletes) {
         if (d.payload.address_id) {
           try {
-            await Api.deleteAddress(d.payload.address_id, user.userId || 'guest');
+            await Api.deleteAddress(d.payload.address_id, ownerId);
             synced += 1;
           } catch { /* ignore individual failures */ }
         }
       }
-      // surveys
+      await Storage.setSyncQueue([]);
+      // surveys — keep failed ops in the queue so no data is ever lost
+      const failedSurveys: SurveySyncOp[] = [];
       for (const op of surveyQueue) {
         try {
           if (op.op === 'UPSERT' && 'address_id' in op.payload) {
             await Api.saveSurvey(op.payload as HouseholdSurvey);
           } else if (op.op === 'DELETE') {
-            await Api.deleteSurvey((op.payload as { address_id: string }).address_id, user.userId || 'guest');
+            await Api.deleteSurvey((op.payload as { address_id: string }).address_id, ownerId);
           }
           synced += 1;
-        } catch { /* ignore */ }
+        } catch {
+          failedSurveys.push(op);
+        }
       }
-      await Storage.setSyncQueue([]);
-      await Storage.setSurveyQueue([]);
-      setSyncQueueCount(0);
+      await Storage.setSurveyQueue(failedSurveys);
+      setSyncQueueCount(failedSurveys.length);
       const ts = new Date().toISOString();
       await Storage.setLastSync(ts);
       setLastSync(ts);
@@ -276,13 +308,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setOnline(false);
       return null;
     }
-  }, [user.userId]);
+  }, [ownerId]);
+
+  // Initial flush: as soon as the app is ready (and whenever identity resolves),
+  // push any data recorded offline in a previous session.
+  useEffect(() => {
+    if (ready && deviceId) {
+      syncNow();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, deviceId]);
 
   const t = useMemo<Strings>(() => STRINGS[language], [language]);
 
   const value: Ctx = {
     ready, language, setLanguage, t,
     user, setUser,
+    deviceId, ownerId, surveyorName, setSurveyorName,
     addresses, publicCommerces, refreshAddresses, refreshPublicCommerces,
     saveAddress, deleteAddress,
     saveSurvey, getLocalSurvey, deleteSurvey,

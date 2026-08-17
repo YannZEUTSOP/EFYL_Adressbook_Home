@@ -28,7 +28,12 @@ function compassLabel(deg: number): string {
 
 export default function NewAddress() {
   const router = useRouter();
-  const { t, saveAddress, isOnline } = useApp();
+  const { t, saveAddress, isOnline, ownerId, surveyorName } = useApp();
+
+  const notify = (title: string, msg?: string) => {
+    if (Platform.OS === 'web') window.alert(msg ? `${title}\n${msg}` : title);
+    else Alert.alert(title, msg || '');
+  };
 
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [measuring, setMeasuring] = useState(false);
@@ -77,42 +82,70 @@ export default function NewAddress() {
   useEffect(() => () => { watchSub.current?.remove(); if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current); }, []);
 
   // Start heading tracking when entering step 3.
-  // Primary: Location.watchHeadingAsync (sensor-fusion, works when phone is held upright for camera aiming).
-  // Fallback: raw magnetometer.
+  // Native → Location.watchHeadingAsync (sensor fusion) with magnetometer fallback.
+  // Web (mobile browser) → DeviceOrientation events (webkitCompassHeading on iOS).
   useEffect(() => {
-    if (step === 3 && Platform.OS !== 'web') {
-      let headingSub: Location.LocationSubscription | null = null;
-      (async () => {
-        try {
-          headingSub = await Location.watchHeadingAsync((h) => {
-            const deg = h.trueHeading >= 0 ? h.trueHeading : h.magHeading;
-            if (deg >= 0) setCompassDeg(deg);
-          });
-        } catch {
-          try {
-            const { Magnetometer } = require('expo-sensors');
-            const avail = await Magnetometer.isAvailableAsync();
-            if (!avail) return;
-            Magnetometer.setUpdateInterval(300);
-            magSubRef.current = Magnetometer.addListener(({ x, y }: { x: number; y: number }) => {
-              let angle = Math.atan2(y, x) * (180 / Math.PI);
-              angle = (angle + 360) % 360;
-              const heading = (90 - angle + 360) % 360;
-              setCompassDeg(heading);
-            });
-          } catch { /* no sensor available */ }
+    if (step !== 3) return undefined;
+    if (Platform.OS === 'web') {
+      const handler = (e: any) => {
+        let heading: number | null = null;
+        if (typeof e.webkitCompassHeading === 'number') {
+          heading = e.webkitCompassHeading; // iOS Safari
+        } else if (typeof e.alpha === 'number' && e.alpha !== null) {
+          heading = (360 - e.alpha) % 360;  // Android Chrome
         }
-      })();
-      return () => {
-        headingSub?.remove();
-        if (magSubRef.current) {
-          magSubRef.current.remove();
-          magSubRef.current = null;
+        if (heading !== null && Number.isFinite(heading)) {
+          setCompassDeg((heading + 360) % 360);
         }
       };
+      window.addEventListener('deviceorientationabsolute', handler, true);
+      window.addEventListener('deviceorientation', handler, true);
+      return () => {
+        window.removeEventListener('deviceorientationabsolute', handler, true);
+        window.removeEventListener('deviceorientation', handler, true);
+      };
     }
-    return undefined;
+    let headingSub: Location.LocationSubscription | null = null;
+    (async () => {
+      try {
+        headingSub = await Location.watchHeadingAsync((h) => {
+          const deg = h.trueHeading >= 0 ? h.trueHeading : h.magHeading;
+          if (deg >= 0) setCompassDeg(deg);
+        });
+      } catch {
+        try {
+          const { Magnetometer } = require('expo-sensors');
+          const avail = await Magnetometer.isAvailableAsync();
+          if (!avail) return;
+          Magnetometer.setUpdateInterval(300);
+          magSubRef.current = Magnetometer.addListener(({ x, y }: { x: number; y: number }) => {
+            let angle = Math.atan2(y, x) * (180 / Math.PI);
+            angle = (angle + 360) % 360;
+            const heading = (90 - angle + 360) % 360;
+            setCompassDeg(heading);
+          });
+        } catch { /* no sensor available */ }
+      }
+    })();
+    return () => {
+      headingSub?.remove();
+      if (magSubRef.current) {
+        magSubRef.current.remove();
+        magSubRef.current = null;
+      }
+    };
   }, [step]);
+
+  // iOS Safari requires an explicit user-gesture permission for orientation sensors
+  const enableWebCompass = async () => {
+    try {
+      const DOE: any = typeof DeviceOrientationEvent !== 'undefined' ? DeviceOrientationEvent : null;
+      if (DOE && typeof DOE.requestPermission === 'function') {
+        const res = await DOE.requestPermission();
+        if (res !== 'granted') notify('🧭', t.newAddress.compassWebHint);
+      }
+    } catch { /* ignore */ }
+  };
 
   const startMeasure = async () => {
     setAllowSaveAnyway(false);
@@ -259,24 +292,86 @@ export default function NewAddress() {
   const computedAddressId = buildAddressId(district || 'XXX', sector, streetId, houseNumber);
   const display = formatAddressDisplay(district || '—', sector, streetId, houseNumber);
 
+  // Web: capture a photo through the mobile browser (file input opens the camera),
+  // then downscale via canvas to keep base64 small (localStorage-friendly).
+  const captureWebPhoto = (): Promise<string | null> =>
+    new Promise((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      (input as any).capture = 'environment';
+      input.onchange = () => {
+        const file = input.files && input.files[0];
+        if (!file) { resolve(null); return; }
+        const img = new (window as any).Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          try {
+            const maxDim = 800;
+            const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(img.width * scale);
+            canvas.height = Math.round(img.height * scale);
+            const ctx = canvas.getContext('2d');
+            if (!ctx) { resolve(null); return; }
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+            resolve(dataUrl.split(',')[1] || null);
+          } catch { resolve(null); } finally { URL.revokeObjectURL(url); }
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+        img.src = url;
+      };
+      input.click();
+    });
+
+  const addCapturedPhoto = async (base64: string, azimuthMode: boolean) => {
+    let lat = coords?.latitude ?? null;
+    let lng = coords?.longitude ?? null;
+    if (Platform.OS !== 'web') {
+      try {
+        const last = await Location.getLastKnownPositionAsync();
+        if (last) { lat = last.coords.latitude; lng = last.coords.longitude; }
+      } catch { /* keep step-1 coords */ }
+    }
+    const bearing = compassDeg !== null ? Math.round(compassDeg) : null;
+    const newPhoto: AddressPhoto = { base64, lat, lng, bearing, taken_at: new Date().toISOString() };
+    setPhotos((p) => (p.length < 5 ? [...p, newPhoto] : p));
+    if (azimuthMode && compassDeg !== null) {
+      setLockedAzimuth(compassDeg);
+      try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch { /* ignore */ }
+    }
+  };
+
   // Step 3 — photo capture (multiple photos, each with GPS + bearing)
   const openCamera = async (mode: 'photo' | 'azimuth') => {
-    if (Platform.OS === 'web') {
-      Alert.alert('Photo', "La capture photo nécessite l'application mobile.");
+    if (mode === 'photo' && photos.length >= 5) {
+      notify('📸', t.newAddress.maxPhotos);
       return;
     }
-    if (mode === 'photo' && photos.length >= 5) {
-      Alert.alert('', t.newAddress.maxPhotos);
+    if (Platform.OS === 'web') {
+      const b64 = await captureWebPhoto();
+      if (b64) await addCapturedPhoto(b64, mode === 'azimuth');
       return;
     }
     try {
       const cam = require('expo-camera');
       const perm = await cam.Camera.requestCameraPermissionsAsync();
-      if (perm.status !== 'granted') { Alert.alert('Camera', 'Permission caméra refusée'); return; }
+      if (perm.status !== 'granted') {
+        if (perm.canAskAgain === false) {
+          Alert.alert('Camera', "Permission caméra refusée. Ouvrez les réglages pour l'activer.", [
+            { text: t.common.cancel, style: 'cancel' },
+            { text: 'Réglages', onPress: () => Linking.openSettings() },
+          ]);
+        } else {
+          Alert.alert('Camera', 'Permission caméra refusée');
+        }
+        return;
+      }
       setCameraMode(mode);
       setCameraOpen(true);
     } catch {
-      Alert.alert('Photo', "Le module caméra n'est pas disponible.");
+      notify('Photo', "Le module caméra n'est pas disponible.");
     }
   };
 
@@ -287,27 +382,11 @@ export default function NewAddress() {
         quality: 0.4, base64: true, skipProcessing: false,
       });
       if (photo?.base64) {
-        // Record GPS position at capture time (fast last-known fix, fallback to step-1 coords)
-        let lat = coords?.latitude ?? null;
-        let lng = coords?.longitude ?? null;
-        try {
-          const last = await Location.getLastKnownPositionAsync();
-          if (last) { lat = last.coords.latitude; lng = last.coords.longitude; }
-        } catch { /* keep step-1 coords */ }
-        const bearing = compassDeg !== null ? Math.round(compassDeg) : null;
-        const newPhoto: AddressPhoto = {
-          base64: photo.base64, lat, lng, bearing,
-          taken_at: new Date().toISOString(),
-        };
-        if (photos.length < 5) setPhotos((p) => [...p, newPhoto]);
-        if (cameraMode === 'azimuth' && compassDeg !== null) {
-          setLockedAzimuth(compassDeg);
-          try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch { /* ignore */ }
-        }
+        await addCapturedPhoto(photo.base64, cameraMode === 'azimuth');
       }
       setCameraOpen(false);
     } catch (e) {
-      Alert.alert('Photo', "Erreur lors de la capture.");
+      notify('Photo', 'Erreur lors de la capture.');
     }
   };
 
@@ -349,7 +428,8 @@ export default function NewAddress() {
       latitude: final_lat, longitude: final_lng,
       accuracy_meters: Number(coords.accuracy.toFixed(2)),
       contact_name: contactName, contact_phone: contactPhone, notes,
-      owner_id: 'guest',
+      owner_id: ownerId,
+      owner_name: surveyorName || '',
       verified: false, flag_count: 0,
       low_accuracy: lowAccuracy,
       azimuth_degrees: lockedAzimuth,
@@ -495,6 +575,21 @@ export default function NewAddress() {
               <View style={styles.compassCard}>
                 <Text style={styles.compassLabel}>{t.newAddress.compassTitle}</Text>
                 <Text style={styles.compassHint}>{t.newAddress.compassInstruction}</Text>
+                {Platform.OS === 'web' && compassDeg === null && (
+                  <>
+                    <Button
+                      label={t.newAddress.compassEnableWeb}
+                      variant="secondary"
+                      onPress={enableWebCompass}
+                      testID="enable-compass-btn"
+                      style={{ marginTop: 8 }}
+                    />
+                    <Text style={styles.aimHint}>{t.newAddress.compassWebHint}</Text>
+                  </>
+                )}
+                {Platform.OS !== 'web' && compassDeg === null && (
+                  <Text style={styles.aimHint}>{t.newAddress.compassCalibrate}</Text>
+                )}
                 <View style={styles.compassDisplay}>
                   <Animated.View
                     style={[
@@ -525,7 +620,7 @@ export default function NewAddress() {
                   testID="lock-direction-btn"
                   style={{ marginTop: Spacing.md }}
                 />
-                {Platform.OS !== 'web' && (
+                {Platform.OS !== 'web' ? (
                   <>
                     <Button
                       label={`📷 ${t.newAddress.aimCamera}`}
@@ -536,6 +631,19 @@ export default function NewAddress() {
                     />
                     <Text style={styles.aimHint}>{t.newAddress.aimHint}</Text>
                   </>
+                ) : (
+                  compassDeg !== null && (
+                    <>
+                      <Button
+                        label={`📷 ${t.newAddress.aimCamera}`}
+                        variant="ghost"
+                        onPress={() => openCamera('azimuth')}
+                        testID="aim-camera-btn"
+                        style={{ marginTop: 8 }}
+                      />
+                      <Text style={styles.aimHint}>{t.newAddress.aimHint}</Text>
+                    </>
+                  )
                 )}
               </View>
 
@@ -579,6 +687,7 @@ export default function NewAddress() {
             <View testID="step-4">
               <Text style={styles.sectionTitle}>{t.newAddress.step4}</Text>
               <Text style={styles.detectHint}>{t.newAddress.satelliteInstruction}</Text>
+              <Text style={[styles.detectHint, { marginTop: 2 }]}>{t.newAddress.satelliteTip}</Text>
               <View style={styles.satMapWrap}>
                 <LeafletMap
                   centerLat={latCorrected ?? coords.latitude}

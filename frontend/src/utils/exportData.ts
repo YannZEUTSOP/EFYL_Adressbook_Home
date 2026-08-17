@@ -21,7 +21,8 @@ function buildCsv(addresses: AddressDTO[], surveys: Record<string, HouseholdSurv
     'verified', 'flag_count',
     'azimuth_degrees', 'lat_raw', 'lng_raw', 'lat_corrected', 'lng_corrected',
     'has_photo', 'photos_count', 'created_at',
-    'survey_type',
+    'owner_id', 'owner_name',
+    'survey_type', 'family_name',
     'survey_total_persons', 'survey_main_income', 'survey_other_income',
     'survey_income_level', 'survey_num_phones', 'survey_has_internet',
     'survey_electricity', 'survey_water', 'survey_toilets', 'survey_toilets_other',
@@ -36,6 +37,7 @@ function buildCsv(addresses: AddressDTO[], surveys: Record<string, HouseholdSurv
     'commerce_hours_weekdays', 'commerce_hours_saturday', 'commerce_hours_sunday',
     'public_name', 'public_category', 'public_category_other',
     'public_managing_org', 'public_phone', 'public_notes',
+    'heritage_name', 'heritage_kind', 'heritage_category', 'heritage_access',
     'persons_count', 'persons_summary',
   ];
   const lines = [headers.join(',')];
@@ -43,6 +45,7 @@ function buildCsv(addresses: AddressDTO[], surveys: Record<string, HouseholdSurv
     const s = surveys[a.address_id] || null;
     const c = s?.commerce || null;
     const p = s?.public_service || null;
+    const h = s?.heritage || null;
     const persons = s?.persons || [];
     const personsSummary = persons
       .map((pe) => `${pe.name || '?'}(${pe.age ?? '?'}|${pe.gender || '?'}|${pe.education || '?'}|${pe.profession || ''})`)
@@ -55,7 +58,8 @@ function buildCsv(addresses: AddressDTO[], surveys: Record<string, HouseholdSurv
       a.azimuth_degrees ?? '', a.lat_raw ?? '', a.lng_raw ?? '',
       a.lat_corrected ?? '', a.lng_corrected ?? '',
       !!a.photo_base64, (a.photos || []).length, a.created_at,
-      s?.survey_type || '',
+      a.owner_id || '', a.owner_name || '',
+      s?.survey_type || '', s?.family_name || '',
       s?.total_persons ?? '', s?.main_income_source || '', s?.other_income_sources || '',
       s?.income_level || '', s?.num_phones ?? '', s?.has_internet ?? '',
       s?.electricity || '', s?.water || '', s?.toilets || '', s?.toilets_other || '',
@@ -70,6 +74,7 @@ function buildCsv(addresses: AddressDTO[], surveys: Record<string, HouseholdSurv
       c?.hours_weekdays || '', c?.hours_saturday || '', c?.hours_sunday || '',
       p?.name || '', p?.category || '', p?.category_other || '',
       p?.managing_org || '', p?.phone || '', p?.notes || '',
+      h?.name || '', h?.kind || '', h?.category || '', h?.access || '',
       persons.length, personsSummary,
     ];
     lines.push(row.map(esc).join(','));

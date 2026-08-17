@@ -8,23 +8,26 @@ import { useApp } from '../../src/contexts/AppContext';
 import { Button } from '../../src/components/Button';
 import {
   HouseholdSurvey, emptySurvey, emptyPerson, emptyCommerce, emptyPublicService,
+  emptyHeritage, emptyPlace,
   IncomeLevel, Utility, Toilets, KitchenPosition, WallMaterial, RoofMaterial,
-  Education, Gender, SurveyType, PublicCategory, Person,
+  Education, Gender, SurveyType, PublicCategory, Person, PersonPlace,
+  PlaceCategory, PlaceFrequency, HeritageKind, HeritageAccess, RoadAccess,
 } from '../../src/types/survey';
+import { Storage } from '../../src/services/storage';
 import { HoursField, isValidHours, formatHours } from '../../src/components/HoursField';
 import { ProductsPicker, parseProducts } from '../../src/components/ProductsPicker';
 
 type StepKey =
-  | 'typeChoice' | 'intro' | 'totalPersons' | 'income' | 'incomeLevel'
+  | 'typeChoice' | 'intro' | 'familyName' | 'totalPersons' | 'income' | 'incomeLevel'
   | 'phones' | 'internet' | 'electricity' | 'water'
   | 'toilets' | 'kitchen' | 'rooms' | 'floors'
   | 'walls' | 'windows' | 'roof'
-  | 'vehicles' | 'commerce' | 'publicService'
+  | 'vehicles' | 'commerce' | 'publicService' | 'heritage'
   | 'personsIntro' | 'personEntry'
   | 'summary';
 
 const HOUSEHOLD_ORDER: StepKey[] = [
-  'typeChoice', 'intro', 'totalPersons', 'income', 'incomeLevel',
+  'typeChoice', 'intro', 'familyName', 'totalPersons', 'income', 'incomeLevel',
   'phones', 'internet', 'electricity', 'water',
   'toilets', 'kitchen', 'rooms', 'floors',
   'walls', 'windows', 'roof', 'vehicles',
@@ -39,6 +42,10 @@ const PUBLIC_ORDER: StepKey[] = [
   'typeChoice', 'publicService', 'summary',
 ];
 
+const HERITAGE_ORDER: StepKey[] = [
+  'typeChoice', 'heritage', 'summary',
+];
+
 export default function SurveyScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -51,23 +58,47 @@ export default function SurveyScreen() {
   const [personMode, setPersonMode] = useState<'list' | 'form'>('list');
   const [personDraft, setPersonDraft] = useState<Person>(emptyPerson());
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [placeDraft, setPlaceDraft] = useState<PersonPlace>(emptyPlace());
+  const [resumedDraft, setResumedDraft] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
 
   useEffect(() => {
     (async () => {
+      // 1) resume an in-progress draft (phase-1 / continue-later feature)
+      const draft = await Storage.getSurveyDraft(addressId);
+      if (draft) {
+        setSurvey(draft.survey);
+        setTypeChosen(true);
+        setStepKey(draft.stepKey as StepKey);
+        setResumedDraft(true);
+        return;
+      }
+      // 2) otherwise edit the completed survey if one exists
       const existing = await getLocalSurvey(addressId);
       if (existing) {
         setSurvey(existing);
         setTypeChosen(true);
-        // If resuming, skip type choice & jump to the right step
         setStepKey(
           existing.survey_type === 'commerce' ? 'commerce'
           : existing.survey_type === 'public' ? 'publicService'
+          : existing.survey_type === 'heritage' ? 'heritage'
           : 'intro'
         );
       }
     })();
   }, [addressId, getLocalSurvey]);
+
+  const saveDraftAndExit = async () => {
+    await Storage.setSurveyDraft(addressId, {
+      survey, stepKey, savedAt: new Date().toISOString(),
+    });
+    if (Platform.OS === 'web') {
+      window.alert(t.survey.draftSaved);
+    } else {
+      Alert.alert('💾', t.survey.draftSaved);
+    }
+    router.back();
+  };
 
   const set = <K extends keyof HouseholdSurvey>(k: K, v: HouseholdSurvey[K]) => {
     setSurvey((s) => ({ ...s, [k]: v }));
@@ -90,6 +121,20 @@ export default function SurveyScreen() {
     setErrorMsg('');
   };
 
+  const setHeritage = (field: string, v: any) => {
+    setSurvey((s) => ({
+      ...s,
+      heritage: { ...(s.heritage || emptyHeritage()), [field]: v },
+    }));
+    setErrorMsg('');
+  };
+
+  const toggleFacility = (key: string) => {
+    const cur = (survey.heritage?.facilities || '').split(',').map((x) => x.trim()).filter(Boolean);
+    const next = cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key];
+    setHeritage('facilities', next.join(', '));
+  };
+
   const setDraftField = (field: keyof Person, v: any) => {
     setPersonDraft((p) => ({ ...p, [field]: v }));
     setErrorMsg('');
@@ -98,6 +143,7 @@ export default function SurveyScreen() {
   const ORDER: StepKey[] =
     survey.survey_type === 'commerce' ? COMMERCE_ORDER
     : survey.survey_type === 'public' ? PUBLIC_ORDER
+    : survey.survey_type === 'heritage' ? HERITAGE_ORDER
     : HOUSEHOLD_ORDER;
   const idx = Math.max(0, ORDER.indexOf(stepKey));
   const totalSteps = ORDER.length;
@@ -108,12 +154,18 @@ export default function SurveyScreen() {
       survey_type: type,
       is_commerce: type === 'commerce',
       is_public: type === 'public',
+      is_heritage: type === 'heritage',
       commerce: type === 'commerce' ? (s.commerce || emptyCommerce()) : null,
       public_service: type === 'public' ? (s.public_service || emptyPublicService()) : null,
+      heritage: type === 'heritage' ? (s.heritage || emptyHeritage()) : null,
     }));
     setTypeChosen(true);
     // Move to next step in the chosen order
-    const order = type === 'commerce' ? COMMERCE_ORDER : type === 'public' ? PUBLIC_ORDER : HOUSEHOLD_ORDER;
+    const order =
+      type === 'commerce' ? COMMERCE_ORDER
+      : type === 'public' ? PUBLIC_ORDER
+      : type === 'heritage' ? HERITAGE_ORDER
+      : HOUSEHOLD_ORDER;
     setStepKey(order[1]);
     setErrorMsg('');
   };
@@ -121,6 +173,9 @@ export default function SurveyScreen() {
   const validate = (): boolean => {
     setErrorMsg('');
     if (stepKey === 'typeChoice') return true;
+    if (stepKey === 'familyName') {
+      if (!survey.family_name.trim()) { setErrorMsg(t.survey.errRequired); return false; }
+    }
     if (stepKey === 'totalPersons') {
       if (!Number.isFinite(survey.total_persons) || survey.total_persons < 1) {
         setErrorMsg(t.survey.errPositive);
@@ -167,6 +222,18 @@ export default function SurveyScreen() {
       if (!p.name.trim()) { setErrorMsg(t.survey.errRequired); return false; }
       if (!p.category) { setErrorMsg(t.survey.errChoice); return false; }
       if (p.category === 'other' && !p.category_other.trim()) { setErrorMsg(t.survey.errRequired); return false; }
+    }
+    if (stepKey === 'heritage') {
+      const h = survey.heritage || emptyHeritage();
+      if (!h.name.trim()) { setErrorMsg(t.survey.errRequired); return false; }
+      if (!h.kind) { setErrorMsg(t.survey.errChoice); return false; }
+      if (!h.category) { setErrorMsg(t.survey.errChoice); return false; }
+      if (h.category === 'other' && !h.category_other.trim()) { setErrorMsg(t.survey.errRequired); return false; }
+      if (!h.access) { setErrorMsg(t.survey.errChoice); return false; }
+      if (h.access === 'paid' && !h.entry_fee.trim()) { setErrorMsg(t.survey.errRequired); return false; }
+      if (h.photos_allowed === null) { setErrorMsg(t.survey.errChoice); return false; }
+      if (!h.road_access) { setErrorMsg(t.survey.errChoice); return false; }
+      if (h.hours && !isValidHours(h.hours)) { setErrorMsg(t.survey.h_invalid); return false; }
     }
     return true;
   };
@@ -321,13 +388,19 @@ export default function SurveyScreen() {
           <Ionicons name="chevron-back" size={26} color={Colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.title}>{t.survey.title}</Text>
-        <View style={{ width: 26 }} />
+        <TouchableOpacity onPress={saveDraftAndExit} style={styles.draftBtn} testID="survey-draft-btn">
+          <Ionicons name="save-outline" size={16} color={Colors.primary} />
+          <Text style={styles.draftBtnTxt}>{t.survey.draftSave}</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.progressBar}>
         <View style={[styles.progressFill, { width: `${((idx + 1) / totalSteps) * 100}%` }]} />
       </View>
       <Text style={styles.progressText}>{t.survey.progress} {idx + 1} / {totalSteps}</Text>
+      {resumedDraft && (
+        <Text style={styles.resumedTxt} testID="draft-resumed-banner">{t.survey.draftResumed}</Text>
+      )}
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 140 }}>
@@ -360,6 +433,14 @@ export default function SurveyScreen() {
                 <Text style={styles.typeTitle}>{t.survey.typePublic}</Text>
                 <Text style={styles.typeDesc}>{t.survey.typePublicDesc}</Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.typeCard, typeChosen && survey.survey_type === 'heritage' && styles.typeCardActive]}
+                onPress={() => chooseType('heritage')}
+                testID="type-choice-heritage"
+              >
+                <Text style={styles.typeTitle}>{t.survey.typeHeritage}</Text>
+                <Text style={styles.typeDesc}>{t.survey.typeHeritageDesc}</Text>
+              </TouchableOpacity>
               <Text style={styles.code}>{addressId}</Text>
             </View>
           )}
@@ -368,6 +449,20 @@ export default function SurveyScreen() {
             <View testID="step-intro">
               <Text style={styles.intro}>{t.survey.intro}</Text>
               <Text style={styles.code}>{addressId}</Text>
+            </View>
+          )}
+
+          {stepKey === 'familyName' && (
+            <View testID="step-familyName">
+              {Q(t.survey.q_family_name)}
+              <TextInput
+                style={styles.text}
+                value={survey.family_name}
+                onChangeText={(v) => set('family_name', v)}
+                placeholder={t.survey.q_family_name_ph}
+                placeholderTextColor={Colors.textTertiary}
+                testID="family-name-input"
+              />
             </View>
           )}
 
@@ -620,6 +715,107 @@ export default function SurveyScreen() {
             </View>
           )}
 
+          {stepKey === 'heritage' && (
+            <View testID="step-heritage">
+              {Q(t.survey.her_title)}
+              <Label>{t.survey.her_name}</Label>
+              <TextInput style={styles.text} value={survey.heritage?.name || ''}
+                onChangeText={(v) => setHeritage('name', v)}
+                placeholder={t.survey.her_name_ph}
+                placeholderTextColor={Colors.textTertiary} testID="her-name" />
+              <Label>{t.survey.her_kind}</Label>
+              {ChoiceRow<HeritageKind>([
+                { v: 'sacred', label: t.survey.kind_sacred },
+                { v: 'tourist', label: t.survey.kind_tourist },
+                { v: 'both', label: t.survey.kind_both },
+              ], survey.heritage?.kind || '', (v) => setHeritage('kind', v), 'her-kind')}
+              <Label>{t.survey.her_category}</Label>
+              {ChoiceRow<string>([
+                { v: 'chiefdom', label: `👑 ${t.survey.hcat_chiefdom}` },
+                { v: 'sacred_forest', label: `🌳 ${t.survey.hcat_sacred_forest}` },
+                { v: 'worship', label: `⛪ ${t.survey.hcat_worship}` },
+                { v: 'tomb', label: `🪦 ${t.survey.hcat_tomb}` },
+                { v: 'waterfall', label: `💧 ${t.survey.hcat_waterfall}` },
+                { v: 'cave', label: `🕳️ ${t.survey.hcat_cave}` },
+                { v: 'museum', label: `🏛️ ${t.survey.hcat_museum}` },
+                { v: 'monument', label: `🗿 ${t.survey.hcat_monument}` },
+                { v: 'viewpoint', label: `🌄 ${t.survey.hcat_viewpoint}` },
+                { v: 'craft_market', label: `🧺 ${t.survey.hcat_craft_market}` },
+                { v: 'other', label: t.survey.opt_other },
+              ], survey.heritage?.category || '', (v) => setHeritage('category', v), 'her-cat')}
+              {survey.heritage?.category === 'other' && (
+                <TextInput style={styles.text} value={survey.heritage?.category_other || ''}
+                  onChangeText={(v) => setHeritage('category_other', v)}
+                  placeholder={t.survey.her_category_other}
+                  placeholderTextColor={Colors.textTertiary} testID="her-cat-other-input" />
+              )}
+              <Label>{t.survey.her_description}</Label>
+              <TextInput style={[styles.text, { height: 70 }]} multiline value={survey.heritage?.description || ''}
+                onChangeText={(v) => setHeritage('description', v)} testID="her-desc" />
+              <Label>{t.survey.her_manager}</Label>
+              <TextInput style={styles.text} value={survey.heritage?.manager || ''}
+                onChangeText={(v) => setHeritage('manager', v)} testID="her-manager" />
+              <Label>{t.survey.her_access}</Label>
+              {ChoiceRow<HeritageAccess>([
+                { v: 'free', label: `🆓 ${t.survey.access_free}` },
+                { v: 'paid', label: `💰 ${t.survey.access_paid}` },
+                { v: 'permission', label: `📝 ${t.survey.access_permission}` },
+              ], survey.heritage?.access || '', (v) => setHeritage('access', v), 'her-access')}
+              {survey.heritage?.access === 'paid' && (
+                <>
+                  <Label>{t.survey.her_fee}</Label>
+                  <TextInput style={styles.text} value={survey.heritage?.entry_fee || ''}
+                    onChangeText={(v) => setHeritage('entry_fee', v)} testID="her-fee" />
+                </>
+              )}
+              <HoursField
+                label={t.survey.her_hours}
+                value={survey.heritage?.hours || ''}
+                onChange={(v) => setHeritage('hours', v)}
+                t={t}
+                testID="her-hours"
+              />
+              <Label>{t.survey.her_best_period}</Label>
+              <TextInput style={styles.text} value={survey.heritage?.best_period || ''}
+                onChangeText={(v) => setHeritage('best_period', v)} testID="her-period" />
+              <Label>{t.survey.her_photos_allowed}</Label>
+              {YesNo(survey.heritage?.photos_allowed ?? null, (v) => setHeritage('photos_allowed', v), 'her-photos')}
+              <Label>{t.survey.her_restrictions}</Label>
+              <TextInput style={[styles.text, { height: 60 }]} multiline value={survey.heritage?.restrictions || ''}
+                onChangeText={(v) => setHeritage('restrictions', v)} testID="her-restrictions" />
+              <Label>{t.survey.her_facilities}</Label>
+              <View style={styles.choiceRow}>
+                {(['parking', 'toilets', 'guide', 'food', 'lodging'] as const).map((k) => {
+                  const active = (survey.heritage?.facilities || '').includes(k);
+                  return (
+                    <TouchableOpacity
+                      key={k}
+                      style={[styles.choice, active && styles.choiceActive]}
+                      onPress={() => toggleFacility(k)}
+                      testID={`her-fac-${k}`}
+                    >
+                      <Text style={[styles.choiceTxt, active && styles.choiceTxtActive]}>
+                        {t.survey[`fac_${k}` as keyof typeof t.survey] as string}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <Label>{t.survey.her_road}</Label>
+              {ChoiceRow<RoadAccess>([
+                { v: 'good', label: `🛣️ ${t.survey.road_good}` },
+                { v: 'average', label: `🚧 ${t.survey.road_average}` },
+                { v: 'difficult', label: `⛰️ ${t.survey.road_difficult}` },
+              ], survey.heritage?.road_access || '', (v) => setHeritage('road_access', v), 'her-road')}
+              <Label>{t.survey.her_phone}</Label>
+              <TextInput style={styles.text} value={survey.heritage?.phone || ''}
+                onChangeText={(v) => setHeritage('phone', v)} keyboardType="phone-pad" testID="her-phone" />
+              <Label>{t.survey.her_notes}</Label>
+              <TextInput style={[styles.text, { height: 60 }]} multiline value={survey.heritage?.notes || ''}
+                onChangeText={(v) => setHeritage('notes', v)} testID="her-notes" />
+            </View>
+          )}
+
           {stepKey === 'personsIntro' && (
             <View>
               {Q(t.survey.p_intro)}
@@ -693,8 +889,79 @@ export default function SurveyScreen() {
               ], personDraft.education, (v) => setDraftField('education', v), 'p-edu')}
               <Label>{t.survey.p_profession}</Label>
               <TextInput style={styles.text} value={personDraft.profession} onChangeText={(v) => setDraftField('profession', v)} testID="p-profession" />
-              <Label>{t.survey.p_place}</Label>
-              <TextInput style={styles.text} value={personDraft.frequented_place} onChangeText={(v) => setDraftField('frequented_place', v)} testID="p-place" />
+
+              {/* Frequented places (3-4 recommended per person) */}
+              <Text style={styles.qTitle}>{t.survey.pp_title}</Text>
+              <Text style={styles.intro}>{t.survey.pp_hint}</Text>
+              {(personDraft.places || []).map((pl, i) => (
+                <View key={i} style={styles.placeCard} testID={`place-card-${i}`}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.personName}>
+                      {pl.category === 'shop' ? t.survey.ppc_shop
+                        : pl.category === 'work' ? t.survey.ppc_work
+                        : pl.category === 'school' ? t.survey.ppc_school
+                        : pl.category === 'leisure' ? t.survey.ppc_leisure
+                        : t.survey.ppc_friend} — {pl.name}
+                    </Text>
+                    <Text style={styles.personMeta}>
+                      {pl.frequency === 'daily' ? t.survey.ppf_daily
+                        : pl.frequency === 'weekly' ? t.survey.ppf_weekly
+                        : pl.frequency === 'monthly' ? t.survey.ppf_monthly
+                        : t.survey.ppf_rarely}{pl.reason ? ` • ${pl.reason}` : ''}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.personBtn}
+                    onPress={() => setPersonDraft((p) => ({ ...p, places: (p.places || []).filter((_, j) => j !== i) }))}
+                    testID={`place-delete-${i}`}
+                  >
+                    <Ionicons name="trash-outline" size={16} color={Colors.error} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <View style={styles.placeForm}>
+                <Label>{t.survey.pp_category}</Label>
+                {ChoiceRow<PlaceCategory>([
+                  { v: 'shop', label: t.survey.ppc_shop },
+                  { v: 'work', label: t.survey.ppc_work },
+                  { v: 'school', label: t.survey.ppc_school },
+                  { v: 'leisure', label: t.survey.ppc_leisure },
+                  { v: 'friend', label: t.survey.ppc_friend },
+                ], placeDraft.category, (v) => { setPlaceDraft((p) => ({ ...p, category: v })); setErrorMsg(''); }, 'pp-cat')}
+                <Label>{t.survey.pp_name}</Label>
+                <TextInput
+                  style={styles.text}
+                  value={placeDraft.name}
+                  onChangeText={(v) => { setPlaceDraft((p) => ({ ...p, name: v })); setErrorMsg(''); }}
+                  testID="pp-name"
+                />
+                <Label>{t.survey.pp_frequency}</Label>
+                {ChoiceRow<PlaceFrequency>([
+                  { v: 'daily', label: t.survey.ppf_daily },
+                  { v: 'weekly', label: t.survey.ppf_weekly },
+                  { v: 'monthly', label: t.survey.ppf_monthly },
+                  { v: 'rarely', label: t.survey.ppf_rarely },
+                ], placeDraft.frequency, (v) => { setPlaceDraft((p) => ({ ...p, frequency: v })); setErrorMsg(''); }, 'pp-freq')}
+                <Label>{t.survey.pp_reason}</Label>
+                <TextInput
+                  style={styles.text}
+                  value={placeDraft.reason}
+                  onChangeText={(v) => setPlaceDraft((p) => ({ ...p, reason: v }))}
+                  testID="pp-reason"
+                />
+                <Button
+                  label={`+ ${t.survey.pp_savePlace}`}
+                  variant="secondary"
+                  onPress={() => {
+                    if (!placeDraft.category || !placeDraft.frequency) { setErrorMsg(t.survey.errChoice); return; }
+                    if (!placeDraft.name.trim()) { setErrorMsg(t.survey.errRequired); return; }
+                    setPersonDraft((p) => ({ ...p, places: [...(p.places || []), placeDraft] }));
+                    setPlaceDraft(emptyPlace());
+                    setErrorMsg('');
+                  }}
+                  testID="pp-add-btn"
+                />
+              </View>
             </View>
           )}
 
@@ -704,14 +971,19 @@ export default function SurveyScreen() {
               <View style={[styles.tagBanner,
                 survey.survey_type === 'commerce' ? styles.tagCommerce
                 : survey.survey_type === 'public' ? styles.tagPublic
+                : survey.survey_type === 'heritage' ? styles.tagHeritage
                 : styles.tagHousehold]}>
                 <Ionicons
-                  name={survey.survey_type === 'commerce' ? 'storefront' : survey.survey_type === 'public' ? 'business' : 'home'}
+                  name={survey.survey_type === 'commerce' ? 'storefront'
+                    : survey.survey_type === 'public' ? 'business'
+                    : survey.survey_type === 'heritage' ? 'earth'
+                    : 'home'}
                   size={14} color={Colors.white}
                 />
                 <Text style={styles.tagBannerTxt}>
                   {survey.survey_type === 'commerce' ? t.survey.typeCommerce
                     : survey.survey_type === 'public' ? t.survey.typePublic
+                    : survey.survey_type === 'heritage' ? t.survey.typeHeritage
                     : t.survey.typeHousehold}
                 </Text>
               </View>
@@ -761,6 +1033,30 @@ export default function SurveyScreen() {
                   {!!survey.public_service?.notes && <Text style={styles.summaryLine}>📝 {survey.public_service.notes}</Text>}
                 </Card>
               )}
+              {survey.survey_type === 'heritage' && (
+                <Card title={t.survey.summaryHeritage}>
+                  <Text style={styles.summaryLine}>{survey.heritage?.name}</Text>
+                  <Text style={styles.summaryLine}>
+                    {survey.heritage?.kind === 'sacred' ? t.survey.kind_sacred
+                      : survey.heritage?.kind === 'tourist' ? t.survey.kind_tourist
+                      : t.survey.kind_both}
+                    {' • '}
+                    {survey.heritage?.category === 'other'
+                      ? survey.heritage?.category_other
+                      : survey.heritage?.category
+                        ? t.survey[`hcat_${survey.heritage.category}` as keyof typeof t.survey] as string
+                        : '—'}
+                  </Text>
+                  <Text style={styles.summaryLine}>
+                    {survey.heritage?.access === 'free' ? t.survey.access_free
+                      : survey.heritage?.access === 'paid' ? `${t.survey.access_paid} — ${survey.heritage?.entry_fee}`
+                      : t.survey.access_permission}
+                  </Text>
+                  <Text style={styles.summaryLine}>🕐 {formatHours(survey.heritage?.hours || '', t)}</Text>
+                  {!!survey.heritage?.facilities && <Text style={styles.summaryLine}>🧰 {survey.heritage.facilities}</Text>}
+                  {!!survey.heritage?.phone && <Text style={styles.summaryLine}>📞 {survey.heritage.phone}</Text>}
+                </Card>
+              )}
             </View>
           )}
 
@@ -774,7 +1070,7 @@ export default function SurveyScreen() {
       </KeyboardAvoidingView>
 
       <View style={styles.footer}>
-        {stepKey !== 'typeChoice' && stepKey !== 'intro' && !(stepKey === 'personEntry' && personMode === 'form') && (
+        {stepKey !== 'typeChoice' && !(stepKey === 'personEntry' && personMode === 'form') && (
           <Button label={t.survey.back} variant="secondary" style={{ flex: 1 }} onPress={goBack} />
         )}
         {stepKey === 'typeChoice' ? (
@@ -837,6 +1133,22 @@ const styles = StyleSheet.create({
   personName: { ...Typography.label, color: Colors.textPrimary },
   personMeta: { ...Typography.caption, color: Colors.textSecondary, marginTop: 2 },
   personBtn: { padding: 8 },
+  placeCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: Colors.surface, borderRadius: Radius.md,
+    padding: Spacing.sm, marginBottom: 6,
+  },
+  placeForm: {
+    backgroundColor: Colors.card, borderRadius: Radius.md,
+    padding: Spacing.md, marginTop: 6, ...Shadows.card,
+  },
+  draftBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderWidth: 1, borderColor: Colors.primary, borderRadius: Radius.pill,
+    paddingHorizontal: 10, paddingVertical: 5,
+  },
+  draftBtnTxt: { ...Typography.caption, color: Colors.primary, fontFamily: 'DMSans_700Bold' },
+  resumedTxt: { ...Typography.caption, color: Colors.accent, textAlign: 'center', marginTop: 4, fontFamily: 'DMSans_700Bold' },
   yesnoRow: { flexDirection: 'row', gap: Spacing.md, marginBottom: Spacing.md },
   yesno: { flex: 1, height: 60, borderRadius: Radius.md, borderWidth: 2, borderColor: Colors.divider, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.card },
   yesnoActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
@@ -860,5 +1172,6 @@ const styles = StyleSheet.create({
   tagHousehold: { backgroundColor: Colors.primary },
   tagCommerce: { backgroundColor: Colors.accent },
   tagPublic: { backgroundColor: '#8B5CF6' },
+  tagHeritage: { backgroundColor: '#DB2777' },
   tagBannerTxt: { color: Colors.white, fontFamily: 'DMSans_700Bold', fontSize: 12 },
 });

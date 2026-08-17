@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, TextInput, FlatList, TouchableOpacity, Image, RefreshControl,
+  View, Text, StyleSheet, TextInput, FlatList, TouchableOpacity, Image, RefreshControl, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -17,9 +17,15 @@ type Row = { kind: 'header'; label: string; count: number } | { kind: 'item'; ad
 
 export default function HomeTab() {
   const router = useRouter();
-  const { t, addresses, publicCommerces, refreshAddresses, refreshPublicCommerces, isOnline } = useApp();
+  const {
+    t, addresses, publicCommerces, refreshAddresses, refreshPublicCommerces, isOnline,
+    ready, surveyorName, setSurveyorName,
+  } = useApp();
   const [q, setQ] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+  const [namePromptDismissed, setNamePromptDismissed] = useState(false);
+  const showNamePrompt = ready && !surveyorName && !namePromptDismissed;
 
   useFocusEffect(
     React.useCallback(() => {
@@ -59,6 +65,34 @@ export default function HomeTab() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']} testID="home-screen">
+      {/* First-launch surveyor name prompt (tracking who records what) */}
+      <Modal visible={showNamePrompt} transparent animationType="fade">
+        <View style={styles.nameModalBg}>
+          <View style={styles.nameModalCard} testID="name-prompt-modal">
+            <Text style={styles.nameModalTitle}>{t.home.namePromptTitle}</Text>
+            <Text style={styles.nameModalBody}>{t.home.namePromptBody}</Text>
+            <TextInput
+              style={styles.nameModalInput}
+              value={nameDraft}
+              onChangeText={setNameDraft}
+              placeholder={t.home.namePromptPh}
+              placeholderTextColor={Colors.textTertiary}
+              testID="name-prompt-input"
+            />
+            <TouchableOpacity
+              style={[styles.nameModalBtn, !nameDraft.trim() && { opacity: 0.5 }]}
+              disabled={!nameDraft.trim()}
+              onPress={async () => {
+                await setSurveyorName(nameDraft.trim());
+                setNamePromptDismissed(true);
+              }}
+              testID="name-prompt-save"
+            >
+              <Text style={styles.nameModalBtnTxt}>{t.home.namePromptBtn}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
       <View style={styles.header}>
         <View>
           <Text style={styles.kicker}>EFYL</Text>
@@ -200,4 +234,24 @@ const styles = StyleSheet.create({
     ...Shadows.fab,
   },
   fabLabel: { color: Colors.white, fontFamily: 'DMSans_700Bold', fontSize: 14 },
+  nameModalBg: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center', justifyContent: 'center', padding: Spacing.lg,
+  },
+  nameModalCard: {
+    backgroundColor: Colors.card, borderRadius: Radius.lg,
+    padding: Spacing.lg, width: '100%', maxWidth: 380, gap: 10,
+  },
+  nameModalTitle: { ...Typography.h3, textAlign: 'center' },
+  nameModalBody: { ...Typography.bodySm, color: Colors.textSecondary, textAlign: 'center', lineHeight: 19 },
+  nameModalInput: {
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.divider,
+    borderRadius: Radius.md, paddingHorizontal: Spacing.md, height: 48,
+    fontFamily: 'DMSans_500Medium', fontSize: 15, color: Colors.textPrimary,
+  },
+  nameModalBtn: {
+    backgroundColor: Colors.primary, borderRadius: Radius.lg,
+    paddingVertical: 13, alignItems: 'center',
+  },
+  nameModalBtnTxt: { color: Colors.white, fontFamily: 'DMSans_700Bold', fontSize: 15 },
 });

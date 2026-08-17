@@ -221,3 +221,13 @@ agent_communication:
       4. Bilingual QA Excel + comprehensive prompt generated in /app/memory/.
       Test focus: confirm public commerce isolation (households stay private), survey bifurcation flow, sync.
       Mock OTP: 123456. Test user phone: +237 600 000 000.
+
+agent_communication_v4:
+  - agent: "main"
+    message: |
+      Iteration 7 (Message-241 batch): all items validated by testing agent — 13 new backend tests
+      (tests/test_efyl_v4_batch7.py), 70/70 total; frontend 12/12 (admin PIN gate, heritage wizard,
+      back-preserves-answers, lieux fréquentés, draft resume, compass text, step-4 CTA labels,
+      blank-screen bugfix on remote public address). Post-test security fix applied by main agent:
+      GET /api/addresses/{id} fallback now only returns community-visible records
+      (is_commerce/is_public/is_heritage) — private households 404 cross-owner. Re-verified: 70/70 pass.

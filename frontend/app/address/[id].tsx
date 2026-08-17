@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Share, Linking, Platform, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Share, Linking, Platform, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Radius, Shadows, Spacing, Typography } from '../../src/theme';
 import { useApp } from '../../src/contexts/AppContext';
 import { Storage } from '../../src/services/storage';
+import { Api } from '../../src/services/api';
 import type { AddressDTO } from '../../src/services/api';
 import { Pill } from '../../src/components/Pill';
 import { LeafletMap } from '../../src/components/LeafletMap';
@@ -23,19 +24,55 @@ export default function AddressDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { t, language, deleteAddress, isOnline } = useApp();
   const [addr, setAddr] = useState<AddressDTO | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [isRemote, setIsRemote] = useState(false);
 
   useEffect(() => {
     (async () => {
-      const list = await Storage.getAddresses();
+      setLoading(true);
       const decoded = decodeURIComponent(String(id));
-      setAddr(list.find((a) => a.address_id === decoded) || null);
+      const list = await Storage.getAddresses();
+      const local = list.find((a) => a.address_id === decoded) || null;
+      if (local) {
+        setAddr(local);
+        setIsRemote(false);
+        setLoading(false);
+        return;
+      }
+      // Not on this device → community address: fetch it from the server
+      try {
+        const fetched = await Api.getAddress(decoded);
+        setAddr(fetched);
+        setIsRemote(true);
+      } catch {
+        setAddr(null);
+      }
+      setLoading(false);
     })();
   }, [id]);
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.centerBox}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.centerTxt}>{t.common.loading}</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (!addr) {
     return (
       <SafeAreaView style={styles.container}>
-        <Text style={styles.title}>—</Text>
+        <View style={styles.centerBox} testID="address-not-found">
+          <Ionicons name="alert-circle-outline" size={44} color={Colors.textTertiary} />
+          <Text style={styles.centerTitle}>{t.detail.notFound}</Text>
+          <Text style={styles.centerTxt}>{t.detail.notFoundHint}</Text>
+          <TouchableOpacity style={styles.backHomeBtn} onPress={() => router.back()} testID="not-found-back">
+            <Text style={styles.backHomeTxt}>← {t.survey.back}</Text>
+          </TouchableOpacity>
+        </View>
       </SafeAreaView>
     );
   }
@@ -86,12 +123,21 @@ export default function AddressDetail() {
           <Ionicons name="chevron-back" size={26} color={Colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Address</Text>
-        <TouchableOpacity onPress={onDelete} testID="detail-delete-btn">
-          <Ionicons name="trash-outline" size={22} color={Colors.error} />
-        </TouchableOpacity>
+        {!isRemote ? (
+          <TouchableOpacity onPress={onDelete} testID="detail-delete-btn">
+            <Ionicons name="trash-outline" size={22} color={Colors.error} />
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 22 }} />
+        )}
       </View>
 
       <ScrollView contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 100 }}>
+        {isRemote && (
+          <View style={styles.communityBanner} testID="community-badge">
+            <Text style={styles.communityBannerTxt}>{t.detail.communityBadge}</Text>
+          </View>
+        )}
         <Text style={styles.title}>{addr.contact_name || addr.district}</Text>
         <Text style={styles.code} testID="detail-code">{addr.address_id}</Text>
         <Text style={styles.meta}>{formatAddressDisplay(addr.district, addr.sector, addr.street_id, addr.house_number)}</Text>
@@ -168,23 +214,25 @@ export default function AddressDetail() {
           <ActionTile icon="warning-outline" label={t.detail.report} onPress={() => router.push(`/verify/${encodeURIComponent(addr.address_id)}`)} testID="action-report" />
         </View>
 
-        {/* Habitants — visible uniquement pour les adresses Foyer (has_survey + !is_commerce) */}
-        {addr.has_survey && !addr.is_commerce && (
+        {/* Habitants — visible uniquement pour les adresses Foyer locales */}
+        {!isRemote && addr.has_survey && !addr.is_commerce && !addr.is_public && !addr.is_heritage && (
           <PersonsManager addressId={addr.address_id} />
         )}
 
-        {/* Survey CTA */}
-        <TouchableOpacity
-          style={styles.surveyCta}
-          onPress={() => router.push(`/survey/${encodeURIComponent(addr.address_id)}`)}
-          testID="survey-cta"
-        >
-          <Ionicons name="document-text-outline" size={22} color={Colors.white} />
-          <Text style={styles.surveyCtaTxt}>
-            {addr.has_survey ? t.detail.surveyView : t.detail.surveyStart}
-          </Text>
-          <Ionicons name="chevron-forward" size={18} color={Colors.white} />
-        </TouchableOpacity>
+        {/* Survey CTA — only for addresses on this device */}
+        {!isRemote && (
+          <TouchableOpacity
+            style={styles.surveyCta}
+            onPress={() => router.push(`/survey/${encodeURIComponent(addr.address_id)}`)}
+            testID="survey-cta"
+          >
+            <Ionicons name="document-text-outline" size={22} color={Colors.white} />
+            <Text style={styles.surveyCtaTxt}>
+              {addr.has_survey ? t.detail.surveyView : t.detail.surveyStart}
+            </Text>
+            <Ionicons name="chevron-forward" size={18} color={Colors.white} />
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -209,6 +257,19 @@ const styles = StyleSheet.create({
   photo: { width: '100%', height: 200, borderRadius: Radius.md, marginTop: 6, resizeMode: 'cover' },
   photoMulti: { width: 180, height: 140, borderRadius: Radius.md, marginTop: 6, resizeMode: 'cover' },
   photoMeta: { ...Typography.caption, color: Colors.textSecondary, marginTop: 4, textAlign: 'center' },
+  centerBox: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: Spacing.lg },
+  centerTitle: { ...Typography.h3, color: Colors.textPrimary },
+  centerTxt: { ...Typography.bodySm, color: Colors.textSecondary, textAlign: 'center' },
+  backHomeBtn: {
+    marginTop: Spacing.sm, backgroundColor: Colors.primary,
+    borderRadius: Radius.lg, paddingHorizontal: Spacing.lg, paddingVertical: 12,
+  },
+  backHomeTxt: { color: Colors.white, fontFamily: 'DMSans_700Bold', fontSize: 14 },
+  communityBanner: {
+    backgroundColor: '#EEF2FF', borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md, paddingVertical: 8, marginBottom: Spacing.sm,
+  },
+  communityBannerTxt: { ...Typography.caption, color: '#4338CA', fontFamily: 'DMSans_700Bold' },
   sectionLabel: { ...Typography.label, color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 1 },
   coordsCard: { marginTop: Spacing.lg, backgroundColor: Colors.card, padding: Spacing.lg, borderRadius: Radius.lg, ...Shadows.card },
   coordsLabel: { ...Typography.label, color: Colors.textSecondary, marginTop: 8 },

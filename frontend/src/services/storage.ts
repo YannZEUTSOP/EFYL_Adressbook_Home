@@ -7,11 +7,13 @@ const KEYS = {
   syncQueue: 'efyl:sync_queue',
   surveyQueue: 'efyl:survey_queue',
   surveys: 'efyl:surveys',
+  surveyDrafts: 'efyl:survey_drafts',
   flags: 'efyl:flags',
   user: 'efyl:user',
   prefs: 'efyl:prefs',
   onboarded: 'efyl:onboarded',
   lastSync: 'efyl:last_sync',
+  deviceId: 'efyl:device_id',
 };
 
 export type SyncOp = {
@@ -30,6 +32,13 @@ export type SurveySyncOp = {
 
 export type Prefs = {
   language: 'fr' | 'en';
+  surveyorName?: string;
+};
+
+export type SurveyDraft = {
+  survey: HouseholdSurvey;
+  stepKey: string;
+  savedAt: string;
 };
 
 export type UserState = {
@@ -99,6 +108,32 @@ export const Storage = {
     return q;
   },
   setSurveyQueue: (q: SurveySyncOp[]) => setJSON(KEYS.surveyQueue, q),
+
+  // survey drafts (phase-1 / resume later)
+  getSurveyDraft: async (addressId: string): Promise<SurveyDraft | null> => {
+    const map = await getJSON<Record<string, SurveyDraft>>(KEYS.surveyDrafts, {});
+    return map[addressId] || null;
+  },
+  setSurveyDraft: async (addressId: string, draft: SurveyDraft) => {
+    const map = await getJSON<Record<string, SurveyDraft>>(KEYS.surveyDrafts, {});
+    map[addressId] = draft;
+    await setJSON(KEYS.surveyDrafts, map);
+  },
+  removeSurveyDraft: async (addressId: string) => {
+    const map = await getJSON<Record<string, SurveyDraft>>(KEYS.surveyDrafts, {});
+    delete map[addressId];
+    await setJSON(KEYS.surveyDrafts, map);
+  },
+
+  // stable per-device identity (used to track which tester created what)
+  getDeviceId: async (): Promise<string> => {
+    let id = await AsyncStorage.getItem(KEYS.deviceId);
+    if (!id) {
+      id = `dev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      await AsyncStorage.setItem(KEYS.deviceId, id);
+    }
+    return id;
+  },
 
   // sync timestamps
   setLastSync: (ts: string) => AsyncStorage.setItem(KEYS.lastSync, ts),

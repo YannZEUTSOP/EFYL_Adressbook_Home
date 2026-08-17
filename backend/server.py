@@ -69,6 +69,8 @@ class Address(BaseModel):
     has_survey: bool = False
     is_commerce: bool = False  # public visibility when True
     is_public: bool = False    # public service/building — also publicly visible
+    is_heritage: bool = False  # sacred/tourist site — also publicly visible
+    owner_name: str = ""       # surveyor display name (tracking)
     photos: Optional[List[dict]] = None  # [{base64, lat, lng, bearing, taken_at}]
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -95,6 +97,8 @@ class AddressCreate(BaseModel):
     lng_corrected: Optional[float] = None
     is_commerce: Optional[bool] = False
     is_public: Optional[bool] = False
+    is_heritage: Optional[bool] = False
+    owner_name: Optional[str] = ""
     photos: Optional[List[dict]] = None
 
 
@@ -112,6 +116,8 @@ class AddressUpdate(BaseModel):
     lng_corrected: Optional[float] = None
     is_commerce: Optional[bool] = None
     is_public: Optional[bool] = None
+    is_heritage: Optional[bool] = None
+    owner_name: Optional[str] = None
     photos: Optional[List[dict]] = None
 
 
@@ -142,6 +148,7 @@ class Person(BaseModel):
     education: str = ""    # primary | middle | high_school | university | none
     profession: str = ""
     frequented_place: str = ""
+    places: List[dict] = []   # [{category, name, frequency, reason}]
 
 
 class Commerce(BaseModel):
@@ -163,11 +170,31 @@ class PublicService(BaseModel):
     notes: str = ""
 
 
+class HeritageSite(BaseModel):
+    name: str = ""
+    kind: str = ""             # sacred | tourist | both
+    category: str = ""         # chiefdom|sacred_forest|worship|tomb|waterfall|cave|museum|monument|viewpoint|craft_market|other
+    category_other: str = ""
+    description: str = ""
+    manager: str = ""
+    access: str = ""           # free | paid | permission
+    entry_fee: str = ""
+    hours: str = ""
+    best_period: str = ""
+    photos_allowed: Optional[bool] = None
+    restrictions: str = ""
+    facilities: str = ""
+    road_access: str = ""      # good | average | difficult
+    phone: str = ""
+    notes: str = ""
+
+
 class HouseholdSurvey(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     address_id: str
     owner_id: Optional[str] = "guest"
-    survey_type: str = "household"   # household | commerce | public
+    survey_type: str = "household"   # household | commerce | public | heritage
+    family_name: str = ""
     total_persons: int = 1
     main_income_source: str = ""
     other_income_sources: str = ""
@@ -192,8 +219,10 @@ class HouseholdSurvey(BaseModel):
     vehicles_trucks: int = 0
     is_commerce: bool = False
     is_public: bool = False
+    is_heritage: bool = False
     commerce: Optional[Commerce] = None
     public_service: Optional[PublicService] = None
+    heritage: Optional[HeritageSite] = None
     persons: List[Person] = []
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -270,7 +299,7 @@ async def list_addresses(owner_id: str = "guest", q: Optional[str] = None,
     if include_public_commerces:
         pub_query: dict = {
             "owner_id": {"$ne": owner_id},
-            "$or": [{"is_commerce": True}, {"is_public": True}],
+            "$or": [{"is_commerce": True}, {"is_public": True}, {"is_heritage": True}],
         }
         if q:
             pub_query = {"$and": [
@@ -296,8 +325,8 @@ async def list_addresses(owner_id: str = "guest", q: Optional[str] = None,
 
 @api_router.get("/commerces", response_model=List[Address])
 async def list_commerces(q: Optional[str] = None):
-    """Returns all public places (commerces + public services) from any user (community map)."""
-    query: dict = {"$or": [{"is_commerce": True}, {"is_public": True}]}
+    """Returns all public places (commerces + public services + heritage sites) from any user (community map)."""
+    query: dict = {"$or": [{"is_commerce": True}, {"is_public": True}, {"is_heritage": True}]}
     if q:
         query = {"$and": [
             query,
@@ -323,7 +352,13 @@ async def get_address(address_id: str, owner_id: str = "guest"):
         {"address_id": address_id, "owner_id": owner_id}, {"_id": 0}
     )
     if not doc:
-        doc = await db.addresses.find_one({"address_id": address_id}, {"_id": 0})
+        # Cross-owner fallback restricted to community-visible records only
+        # (households are private — see EFYL_STOCKAGE_ET_SCENARIOS_FR.md §3)
+        doc = await db.addresses.find_one(
+            {"address_id": address_id,
+             "$or": [{"is_commerce": True}, {"is_public": True}, {"is_heritage": True}]},
+            {"_id": 0},
+        )
     if not doc:
         raise HTTPException(404, "Address not found")
     doc.setdefault("low_accuracy", False)
@@ -513,16 +548,22 @@ async def create_survey(payload: HouseholdSurvey):
     survey = payload
     if not survey.id:
         survey.id = str(uuid.uuid4())
-    # Propagate type to address: commerce & public surveys mark the address as publicly visible
+    # Propagate type to address: commerce, public & heritage surveys mark the address as publicly visible
     survey.is_commerce = (survey.survey_type == "commerce")
     survey.is_public = (survey.survey_type == "public")
+    survey.is_heritage = (survey.survey_type == "heritage")
     await db.surveys.update_one(
         {"address_id": survey.address_id, "owner_id": survey.owner_id},
         {"$set": survey.dict()},
         upsert=True,
     )
     # mark address with has_survey + is_commerce flags (scoped to owner to avoid cross-user mutation)
-    addr_updates = {"has_survey": True, "is_commerce": survey.is_commerce, "is_public": survey.is_public}
+    addr_updates = {
+        "has_survey": True,
+        "is_commerce": survey.is_commerce,
+        "is_public": survey.is_public,
+        "is_heritage": survey.is_heritage,
+    }
     await db.addresses.update_many(
         {"address_id": survey.address_id, "owner_id": survey.owner_id},
         {"$set": addr_updates},
@@ -553,17 +594,8 @@ async def delete_survey(address_id: str, owner_id: str = "guest"):
 
 
 # ============ EXPORT CSV ============
-@api_router.get("/export/csv")
-async def export_csv(owner_id: Optional[str] = None):
-    """Return all addresses + survey data as a CSV file."""
-    query: dict = {}
-    if owner_id:
-        query["owner_id"] = owner_id
-
-    addresses = []
-    async for doc in db.addresses.find(query, {"_id": 0}):
-        addresses.append(doc)
-
+async def _build_csv_content(addresses: List[dict]) -> str:
+    """Shared CSV builder used by /export/csv and /admin/export/csv."""
     output = io.StringIO()
     writer = csv.writer(output)
 
@@ -574,8 +606,9 @@ async def export_csv(owner_id: Optional[str] = None):
         "verified", "flag_count",
         "azimuth_degrees", "lat_raw", "lng_raw", "lat_corrected", "lng_corrected",
         "has_photo", "photos_count", "created_at",
+        "owner_id", "owner_name",
         # survey
-        "survey_type",
+        "survey_type", "family_name",
         "survey_total_persons", "survey_main_income", "survey_other_income",
         "survey_income_level", "survey_num_phones", "survey_has_internet",
         "survey_electricity", "survey_water", "survey_toilets", "survey_toilets_other",
@@ -590,7 +623,11 @@ async def export_csv(owner_id: Optional[str] = None):
         "commerce_hours_weekdays", "commerce_hours_saturday", "commerce_hours_sunday",
         "public_name", "public_category", "public_category_other",
         "public_managing_org", "public_phone", "public_notes",
-        "persons_count", "persons_summary",
+        "heritage_name", "heritage_kind", "heritage_category", "heritage_category_other",
+        "heritage_access", "heritage_entry_fee", "heritage_hours",
+        "heritage_photos_allowed", "heritage_facilities", "heritage_road_access",
+        "heritage_manager", "heritage_phone", "heritage_notes",
+        "persons_count", "persons_summary", "persons_places",
     ]
     writer.writerow(headers)
 
@@ -598,10 +635,18 @@ async def export_csv(owner_id: Optional[str] = None):
         s = await db.surveys.find_one({"address_id": a["address_id"]}, {"_id": 0}) or {}
         commerce = (s.get("commerce") or {}) if s else {}
         public = (s.get("public_service") or {}) if s else {}
+        heritage = (s.get("heritage") or {}) if s else {}
         persons = s.get("persons", []) if s else []
         persons_summary = "; ".join(
             f"{p.get('name','?')}({p.get('age','?')}|{p.get('gender','?')}|{p.get('education','?')}|{p.get('profession','')})"
             for p in persons
+        )
+        persons_places = " || ".join(
+            f"{p.get('name','?')}: " + "; ".join(
+                f"[{pl.get('category','')}] {pl.get('name','')} ({pl.get('frequency','')}) {pl.get('reason','')}"
+                for pl in (p.get("places") or [])
+            )
+            for p in persons if (p.get("places") or [])
         )
         row = [
             a.get("address_id", ""), a.get("district", ""), a.get("sector", ""),
@@ -614,7 +659,8 @@ async def export_csv(owner_id: Optional[str] = None):
             a.get("lat_raw", ""), a.get("lng_raw", ""),
             a.get("lat_corrected", ""), a.get("lng_corrected", ""),
             bool(a.get("photo_base64")), len(a.get("photos") or []), a.get("created_at", ""),
-            s.get("survey_type", ""),
+            a.get("owner_id", ""), a.get("owner_name", ""),
+            s.get("survey_type", ""), s.get("family_name", ""),
             s.get("total_persons", ""), s.get("main_income_source", ""),
             s.get("other_income_sources", ""), s.get("income_level", ""),
             s.get("num_phones", ""), s.get("has_internet", ""),
@@ -634,13 +680,152 @@ async def export_csv(owner_id: Optional[str] = None):
             commerce.get("hours_sunday", ""),
             public.get("name", ""), public.get("category", ""), public.get("category_other", ""),
             public.get("managing_org", ""), public.get("phone", ""), public.get("notes", ""),
-            len(persons), persons_summary,
+            heritage.get("name", ""), heritage.get("kind", ""), heritage.get("category", ""),
+            heritage.get("category_other", ""),
+            heritage.get("access", ""), heritage.get("entry_fee", ""), heritage.get("hours", ""),
+            heritage.get("photos_allowed", ""), heritage.get("facilities", ""), heritage.get("road_access", ""),
+            heritage.get("manager", ""), heritage.get("phone", ""), heritage.get("notes", ""),
+            len(persons), persons_summary, persons_places,
         ]
         writer.writerow(row)
 
-    csv_content = output.getvalue()
+    content = output.getvalue()
     output.close()
+    return content
+
+
+@api_router.get("/export/csv")
+async def export_csv(owner_id: Optional[str] = None):
+    """Return all addresses + survey data as a CSV file."""
+    query: dict = {}
+    if owner_id:
+        query["owner_id"] = owner_id
+
+    addresses = []
+    async for doc in db.addresses.find(query, {"_id": 0}):
+        addresses.append(doc)
+
+    csv_content = await _build_csv_content(addresses)
     filename = f"efyl_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ============ ADMIN DASHBOARD (PIN-protected) ============
+ADMIN_PIN = os.environ.get('ADMIN_PIN', '237237')
+
+
+def _check_pin(pin: str):
+    if pin != ADMIN_PIN:
+        raise HTTPException(403, "Invalid admin PIN")
+
+
+@api_router.get("/admin/overview")
+async def admin_overview(pin: str):
+    """Global stats + per-surveyor breakdown for the project owner."""
+    _check_pin(pin)
+    now = datetime.now(timezone.utc)
+    today_str = now.strftime('%Y-%m-%d')
+    week_ago = (now - timedelta(days=7)).isoformat()
+
+    addresses = []
+    async for doc in db.addresses.find({}, {"_id": 0, "photo_base64": 0, "photos": 0}):
+        addresses.append(doc)
+
+    total = len(addresses)
+    by_type = {"household": 0, "commerce": 0, "public": 0, "heritage": 0}
+    users: dict = {}
+    today_count = 0
+    week_count = 0
+    for a in addresses:
+        if a.get("is_heritage"):
+            by_type["heritage"] += 1
+        elif a.get("is_public"):
+            by_type["public"] += 1
+        elif a.get("is_commerce"):
+            by_type["commerce"] += 1
+        else:
+            by_type["household"] += 1
+        created = a.get("created_at", "")
+        if created.startswith(today_str):
+            today_count += 1
+        if created >= week_ago:
+            week_count += 1
+        oid = a.get("owner_id", "guest")
+        u = users.setdefault(oid, {
+            "owner_id": oid, "owner_name": "", "total": 0, "today": 0, "last_activity": "",
+        })
+        u["total"] += 1
+        if a.get("owner_name") and not u["owner_name"]:
+            u["owner_name"] = a["owner_name"]
+        if created.startswith(today_str):
+            u["today"] += 1
+        if created > u["last_activity"]:
+            u["last_activity"] = created
+
+    surveys_count = await db.surveys.count_documents({})
+    persons_count = 0
+    async for s in db.surveys.find({}, {"_id": 0, "persons": 1}):
+        persons_count += len(s.get("persons") or [])
+
+    users_list = sorted(users.values(), key=lambda u: u["last_activity"], reverse=True)
+    active_24h = sum(
+        1 for u in users_list
+        if u["last_activity"] and u["last_activity"] >= (now - timedelta(hours=24)).isoformat()
+    )
+    return {
+        "total_addresses": total,
+        "by_type": by_type,
+        "surveys_count": surveys_count,
+        "persons_count": persons_count,
+        "today_count": today_count,
+        "week_count": week_count,
+        "active_users_24h": active_24h,
+        "users": users_list,
+        "generated_at": now.isoformat(),
+    }
+
+
+@api_router.get("/admin/addresses")
+async def admin_addresses(pin: str, limit: int = 300):
+    """All addresses from ALL surveyors (photos stripped), newest first, with survey summary."""
+    _check_pin(pin)
+    out = []
+    cursor = db.addresses.find({}, {"_id": 0, "photo_base64": 0}).sort("created_at", -1).limit(limit)
+    async for a in cursor:
+        photos = a.pop("photos", None)
+        a["photos_count"] = len(photos or [])
+        s = await db.surveys.find_one(
+            {"address_id": a["address_id"]},
+            {"_id": 0, "survey_type": 1, "family_name": 1, "persons": 1,
+             "commerce.name": 1, "public_service.name": 1, "heritage.name": 1},
+        )
+        if s:
+            a["survey_type"] = s.get("survey_type", "")
+            a["survey_name"] = (
+                s.get("family_name")
+                or (s.get("commerce") or {}).get("name")
+                or (s.get("public_service") or {}).get("name")
+                or (s.get("heritage") or {}).get("name")
+                or ""
+            )
+            a["persons_count"] = len(s.get("persons") or [])
+        out.append(a)
+    return out
+
+
+@api_router.get("/admin/export/csv")
+async def admin_export_csv(pin: str):
+    """Full CSV of ALL surveyors' data (owner columns included)."""
+    _check_pin(pin)
+    addresses = []
+    async for doc in db.addresses.find({}, {"_id": 0}):
+        addresses.append(doc)
+    csv_content = await _build_csv_content(addresses)
+    filename = f"efyl_admin_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
     return Response(
         content=csv_content,
         media_type="text/csv",

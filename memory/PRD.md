@@ -91,3 +91,14 @@ All feedback from user's tester in Spain implemented & tested (iteration_6, 57/5
 - Photos: up to 5 per address, each {base64,lat,lng,bearing,taken_at} (GPS via getLastKnownPositionAsync + heading at capture); delete with confirm; gallery on address detail. Address.photos in backend + photos_count in CSV.
 - Compass: Location.watchHeadingAsync (sensor fusion, works phone upright) with magnetometer fallback; camera-aim mode: point camera at entrance, live heading overlay, capture locks azimuth + saves photo. NATIVE-ONLY (needs Expo Go/build for field test).
 - Field test protocol for compass: pending user verification on 2-5 real buildings.
+
+## Message-241 batch (v4) — August 2026 (iteration_7: 70/70 backend + 12/12 frontend PASS)
+- BUGFIX: blank screen on community PUBLIC address detail (Fotouni TEST-PUB) — /address/[id] now falls back to Api.getAddress for remote community addresses; renders banner + map + GPS.
+- Admin dashboard /admin (PIN 237237) → GET /api/admin/overview: per-tester stats, 4-category by_type, tester list, CSV export incl. heritage_* + persons_places columns.
+- 4th survey type 'heritage' (Lieux sacrés et lieux touristiques): kind sacred/tourist/both, 10 categories, access free/paid(fee)/permission, hours, photos_allowed, facilities, road_access → is_heritage=true, publicly visible (map + /api/commerces).
+- Survey wizard: "Retour" footer button preserving answers; draft save/resume "Continuer plus tard" (banner ↩️ on resume, draft cleared on final save).
+- Person form: "Lieux fréquentés" (3-4 recommended) — category (boutique/travail/école/loisir/ami), name, frequency (Quotidien/Hebdo/Mensuel/Rarement), free-text reason.
+- Compass instruction text on new-address step 3 (dehors, téléphone à hauteur de poitrine, haut vers la porte).
+- GPS-correction step 4 CTA: "Continuer sans corriger" ↔ "Enregistrer et continuer" after pin drag.
+- Camera permission flow with canAskAgain + Réglages redirect.
+- SECURITY FIX: GET /api/addresses/{id} cross-owner fallback now restricted to is_commerce|is_public|is_heritage — private households return 404 for other users (per EFYL_STOCKAGE_ET_SCENARIOS_FR.md §3; QR share unaffected: QR payload imports locally).
