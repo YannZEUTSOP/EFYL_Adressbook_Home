@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import NetInfo from '@react-native-community/netinfo';
 import { Storage, SyncOp, SurveySyncOp, Prefs, UserState } from '../services/storage';
-import { Api, AddressDTO } from '../services/api';
+import { Api, AddressDTO, AddressPhoto } from '../services/api';
+import { PhotoStore } from '../services/photoStore';
 import { STRINGS, Lang, Strings } from '../i18n';
 import { DEMO_ADDRESSES } from '../utils/demoData';
 import type { HouseholdSurvey, Person } from '../types/survey';
@@ -31,12 +32,64 @@ type Ctx = {
   updatePerson: (addressId: string, index: number, person: Person) => Promise<void>;
   syncQueueCount: number;
   syncNow: () => Promise<{ synced: number } | null>;
+  restoreAccount: (token: string) => Promise<{ addresses: number; surveys: number }>;
   lastSync: string | null;
   isOnline: boolean;
   setOnline: (b: boolean) => void;
 };
 
 const AppCtx = createContext<Ctx | null>(null);
+
+// One-time repair + storage hygiene: move any base64 photos embedded in the
+// AsyncStorage/localStorage address list (and sync queue) into the dedicated
+// PhotoStore (IndexedDB / filesystem). This both FIXES devices already stuck
+// on "quota exceeded" (shrinking the oversized key always succeeds) and
+// prevents the quota from ever being hit again.
+async function migratePhotosOut(): Promise<void> {
+  try {
+    const list = await Storage.getAddresses();
+    let changed = false;
+    for (const a of list) {
+      const embedded: AddressPhoto[] =
+        a.photos && a.photos.length ? a.photos
+        : a.photo_base64
+          ? [{ base64: a.photo_base64, lat: a.lat_raw ?? null, lng: a.lng_raw ?? null,
+               bearing: a.azimuth_degrees ?? null, taken_at: a.created_at }]
+          : [];
+      if (embedded.length) {
+        await PhotoStore.setPhotos(a.address_id, embedded);
+        a.photos = null;
+        a.photo_base64 = null;
+        a.photos_count = embedded.length;
+        changed = true;
+      }
+    }
+    if (changed) await Storage.setAddresses(list);
+
+    const q = await Storage.getSyncQueue();
+    let qChanged = false;
+    for (const op of q) {
+      const p = op.payload;
+      if (p && ((p.photos && p.photos.length) || p.photo_base64)) {
+        const embedded: AddressPhoto[] =
+          p.photos && p.photos.length ? p.photos
+          : p.photo_base64
+            ? [{ base64: p.photo_base64, lat: p.lat_raw ?? null, lng: p.lng_raw ?? null,
+                 bearing: p.azimuth_degrees ?? null, taken_at: p.created_at || new Date().toISOString() }]
+            : [];
+        if (p.address_id && embedded.length) {
+          const existing = await PhotoStore.getPhotos(p.address_id);
+          if (!existing.length) await PhotoStore.setPhotos(p.address_id, embedded);
+        }
+        op.payload = { ...p, photos: null, photo_base64: null, photos_count: embedded.length };
+        qChanged = true;
+      }
+    }
+    if (qChanged) await Storage.setSyncQueue(q);
+  } catch {
+    // migration must never block app startup
+  }
+}
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [ready, setReady] = useState(false);
@@ -53,6 +106,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     (async () => {
+      await migratePhotosOut();
       const [prefs, u, list, q, sq, ls, devId] = await Promise.all([
         Storage.getPrefs(),
         Storage.getUser(),
@@ -141,12 +195,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const saveAddress = useCallback(async (a: AddressDTO) => {
-    const list = await Storage.upsertAddress(a);
+    // Photos live in the dedicated PhotoStore — NEVER inside AsyncStorage
+    // (root cause of the Aug 2026 field "quota exceeded" incident).
+    const photos = a.photos || [];
+    if (photos.length) await PhotoStore.setPhotos(a.address_id, photos);
+    const slim: AddressDTO = { ...a, photos: null, photo_base64: null, photos_count: photos.length };
+    const list = await Storage.upsertAddress(slim);
     setAddresses(list);
     const op: SyncOp = {
       id: `${a.address_id}-${Date.now()}`,
       op: 'CREATE',
-      payload: a,
+      payload: slim,
       createdAt: new Date().toISOString(),
     };
     await Storage.enqueueSync(op);
@@ -157,6 +216,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const list = await Storage.removeAddress(addressId);
     setAddresses(list);
     await Storage.removeSurvey(addressId);
+    await PhotoStore.deletePhotos(addressId);
     const op: SyncOp = {
       id: `${addressId}-del-${Date.now()}`,
       op: 'DELETE',
@@ -269,8 +329,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const deletes = queue.filter((o) => o.op === 'DELETE');
       let synced = 0;
       if (creates.length) {
-        const r = await Api.syncBulk(creates);
-        synced += r.synced;
+        // Re-attach photos from the PhotoStore (queue payloads are stored slim)
+        const hydrated: Partial<AddressDTO>[] = [];
+        for (const p of creates) {
+          const photos = p.address_id ? await PhotoStore.getPhotos(p.address_id) : [];
+          hydrated.push(photos.length ? { ...p, photos, photos_count: photos.length } : p);
+        }
+        // Chunked upload: keeps each request small (photos can weigh ~50 KB each)
+        for (let i = 0; i < hydrated.length; i += 4) {
+          const r = await Api.syncBulk(hydrated.slice(i, i + 4));
+          synced += r.synced;
+        }
       }
       for (const d of deletes) {
         if (d.payload.address_id) {
@@ -310,6 +379,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [ownerId]);
 
+  // Pull everything the user synced to the server (login on a new device)
+  // and merge it into local storage. Local records always win over server ones.
+  const restoreAccount = useCallback(async (token: string) => {
+    const r = await Api.restore(token);
+    const local = await Storage.getAddresses();
+    const localIds = new Set(local.map((a) => a.address_id));
+    let added = 0;
+    for (const srv of r.addresses || []) {
+      if (localIds.has(srv.address_id)) continue;
+      const photos = srv.photos || [];
+      if (photos.length) await PhotoStore.setPhotos(srv.address_id, photos);
+      local.push({
+        ...srv,
+        photos: null,
+        photo_base64: null,
+        photos_count: photos.length || srv.photos_count || 0,
+      });
+      added++;
+    }
+    if (added) {
+      local.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+      await Storage.setAddresses(local);
+      setAddresses(local);
+    }
+    const map = await Storage.getSurveys();
+    let sAdded = 0;
+    for (const s of r.surveys || []) {
+      if (s.address_id && !map[s.address_id]) {
+        await Storage.upsertSurvey(s);
+        sAdded++;
+      }
+    }
+    return { addresses: added, surveys: sAdded };
+  }, []);
+
   // Initial flush: as soon as the app is ready (and whenever identity resolves),
   // push any data recorded offline in a previous session.
   useEffect(() => {
@@ -329,7 +433,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     saveAddress, deleteAddress,
     saveSurvey, getLocalSurvey, deleteSurvey,
     removePerson, addPerson, updatePerson,
-    syncQueueCount, syncNow, lastSync, isOnline, setOnline,
+    syncQueueCount, syncNow, restoreAccount, lastSync, isOnline, setOnline,
   };
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;

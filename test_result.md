@@ -231,3 +231,12 @@ agent_communication_v4:
       blank-screen bugfix on remote public address). Post-test security fix applied by main agent:
       GET /api/addresses/{id} fallback now only returns community-visible records
       (is_commerce/is_public/is_heritage) — private households 404 cross-owner. Re-verified: 70/70 pass.
+
+agent_communication_v5:
+  - agent: "main"
+    message: |
+      Iteration 8: quota crash root-cause fix (PhotoStore + startup migration) and account system
+      (phone+PIN, EFYL ID, JWT restore) both validated green by testing agent (23/23 new backend tests
+      in tests/test_efyl_v5_account.py; frontend migration validated end-to-end incl. saturated-device
+      repair). Post-review: /restore user projection made explicit. Test account: +237699000111 /
+      PIN 1234 / EFYL-90AF88. OTP still MOCKED (123456).

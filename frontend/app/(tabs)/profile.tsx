@@ -64,10 +64,17 @@ export default function ProfileTab() {
 
         <View style={styles.userCard}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarTxt}>{(user.phone || 'GU').slice(-2).toUpperCase()}</Text>
+            <Text style={styles.avatarTxt}>
+              {(user.name || user.phone || 'GU').trim().slice(0, 2).toUpperCase()}
+            </Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.userName}>{user.loggedIn ? user.phone : t.profile.guest}</Text>
+            <Text style={styles.userName}>
+              {user.loggedIn ? (user.name || user.phone) : t.profile.guest}
+            </Text>
+            {user.loggedIn && !!user.efylId && (
+              <Text style={styles.efylId} testID="profile-efyl-id">🪪 {user.efylId}{user.phone ? ` • ${user.phone}` : ''}</Text>
+            )}
             <Text style={styles.userMeta}>
               {addresses.length} {t.profile.addressesCreated} • {surveyCount} {t.profile.surveysSubmitted}
             </Text>
@@ -186,6 +193,7 @@ const styles = StyleSheet.create({
   avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', marginRight: Spacing.md },
   avatarTxt: { color: Colors.white, fontFamily: 'DMSans_700Bold', fontSize: 20 },
   userName: { ...Typography.h3 },
+  efylId: { ...Typography.bodySm, color: Colors.primary, fontFamily: 'JetBrainsMono_700Bold', marginTop: 2 },
   userMeta: { ...Typography.bodySm, color: Colors.textSecondary, marginTop: 2 },
   smallBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radius.pill, backgroundColor: Colors.primary },
   smallBtnTxt: { color: Colors.white, fontFamily: 'DMSans_700Bold', fontSize: 13 },

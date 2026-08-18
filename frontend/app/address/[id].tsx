@@ -7,7 +7,8 @@ import { Colors, Radius, Shadows, Spacing, Typography } from '../../src/theme';
 import { useApp } from '../../src/contexts/AppContext';
 import { Storage } from '../../src/services/storage';
 import { Api } from '../../src/services/api';
-import type { AddressDTO } from '../../src/services/api';
+import type { AddressDTO, AddressPhoto } from '../../src/services/api';
+import { PhotoStore } from '../../src/services/photoStore';
 import { Pill } from '../../src/components/Pill';
 import { LeafletMap } from '../../src/components/LeafletMap';
 import { PersonsManager } from '../../src/components/PersonsManager';
@@ -24,6 +25,7 @@ export default function AddressDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { t, language, deleteAddress, isOnline } = useApp();
   const [addr, setAddr] = useState<AddressDTO | null>(null);
+  const [photoList, setPhotoList] = useState<AddressPhoto[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRemote, setIsRemote] = useState(false);
 
@@ -36,6 +38,8 @@ export default function AddressDetail() {
       if (local) {
         setAddr(local);
         setIsRemote(false);
+        // Photos live in the dedicated PhotoStore (not in AsyncStorage)
+        setPhotoList(await PhotoStore.getPhotos(decoded));
         setLoading(false);
         return;
       }
@@ -44,6 +48,14 @@ export default function AddressDetail() {
         const fetched = await Api.getAddress(decoded);
         setAddr(fetched);
         setIsRemote(true);
+        setPhotoList(
+          fetched.photos && fetched.photos.length
+            ? fetched.photos
+            : fetched.photo_base64
+              ? [{ base64: fetched.photo_base64, lat: null, lng: null,
+                   bearing: fetched.azimuth_degrees ?? null, taken_at: fetched.created_at }]
+              : []
+        );
       } catch {
         setAddr(null);
       }
@@ -162,12 +174,12 @@ export default function AddressDetail() {
           />
         </View>
 
-        {/* Photos (multiple with GPS + bearing) or legacy single photo */}
-        {addr.photos && addr.photos.length > 0 ? (
+        {/* Photos (loaded from the dedicated PhotoStore or the server) */}
+        {photoList.length > 0 && (
           <View style={styles.photoBox}>
-            <Text style={styles.sectionLabel}>📸 {t.detail.photosLabel} ({addr.photos.length})</Text>
+            <Text style={styles.sectionLabel}>📸 {t.detail.photosLabel} ({photoList.length})</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {addr.photos.map((p, i) => (
+              {photoList.map((p, i) => (
                 <View key={i} style={{ marginRight: 10 }}>
                   <Image source={{ uri: `data:image/jpeg;base64,${p.base64}` }} style={styles.photoMulti} />
                   <Text style={styles.photoMeta}>
@@ -177,12 +189,7 @@ export default function AddressDetail() {
               ))}
             </ScrollView>
           </View>
-        ) : addr.photo_base64 ? (
-          <View style={styles.photoBox}>
-            <Text style={styles.sectionLabel}>📸 {t.detail.photoLabel}</Text>
-            <Image source={{ uri: `data:image/jpeg;base64,${addr.photo_base64}` }} style={styles.photo} />
-          </View>
-        ) : null}
+        )}
 
         {/* GPS data */}
         <View style={styles.coordsCard}>

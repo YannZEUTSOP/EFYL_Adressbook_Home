@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Response
+from fastapi import FastAPI, APIRouter, HTTPException, Response, Header
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -10,6 +10,8 @@ import json
 import hashlib
 import secrets
 import logging
+import bcrypt
+import jwt as pyjwt
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Literal
@@ -39,6 +41,44 @@ if TWILIO_ENABLED:
 
 app = FastAPI(title="EFYL AddressBook API", version="2.0.0")
 api_router = APIRouter(prefix="/api")
+
+# ============ ACCOUNT AUTH (phone + 4-digit PIN) ============
+JWT_SECRET = os.environ.get('JWT_SECRET', 'efyl-dev-secret-change-me')
+TOKEN_DAYS = 90
+# Dummy hash verified for unknown identifiers → constant-time-ish, avoids user enumeration
+_DUMMY_PIN_HASH = bcrypt.hashpw(b"0000-dummy-pin", bcrypt.gensalt())
+
+
+def normalize_phone(p: str) -> str:
+    digits = "".join(ch for ch in p if ch.isdigit())
+    return f"+{digits}"
+
+
+def user_id_for_phone(phone: str) -> str:
+    # Same format as the historical OTP login → previously synced data stays linked
+    return f"user_{phone.replace('+', '').replace(' ', '')}"
+
+
+def efyl_id_for(phone: str) -> str:
+    digest = hashlib.sha256(f"efyl:{phone}".encode("utf-8")).hexdigest()[:6].upper()
+    return f"EFYL-{digest}"
+
+
+def make_token(user_id: str) -> str:
+    exp = datetime.now(timezone.utc) + timedelta(days=TOKEN_DAYS)
+    return pyjwt.encode({"sub": user_id, "type": "access", "exp": exp},
+                        JWT_SECRET, algorithm="HS256")
+
+
+def user_id_from_auth(authorization: Optional[str]) -> str:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Authentication required")
+    try:
+        payload = pyjwt.decode(authorization[7:], JWT_SECRET, algorithms=["HS256"])
+        return str(payload["sub"])
+    except Exception:
+        raise HTTPException(401, "Invalid or expired token")
+
 
 
 # ============ MODELS ============
@@ -72,6 +112,7 @@ class Address(BaseModel):
     is_heritage: bool = False  # sacred/tourist site — also publicly visible
     owner_name: str = ""       # surveyor display name (tracking)
     photos: Optional[List[dict]] = None  # [{base64, lat, lng, bearing, taken_at}]
+    photos_count: Optional[int] = None
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -100,6 +141,7 @@ class AddressCreate(BaseModel):
     is_heritage: Optional[bool] = False
     owner_name: Optional[str] = ""
     photos: Optional[List[dict]] = None
+    photos_count: Optional[int] = None
 
 
 class AddressUpdate(BaseModel):
@@ -136,6 +178,18 @@ class OTPRequest(BaseModel):
 class OTPVerify(BaseModel):
     phone: str
     code: str
+
+
+class RegisterRequest(BaseModel):
+    phone: str
+    name: str
+    pin: str
+    code: str  # OTP code verified server-side
+
+
+class LoginRequest(BaseModel):
+    identifier: str  # phone number or EFYL-XXXXXX id
+    pin: str
 
 
 # Household survey models
@@ -501,11 +555,8 @@ async def otp_request(payload: OTPRequest):
     return {"sent": True, "method": "mock", "demo_code": code, "phone": phone}
 
 
-@api_router.post("/auth/otp/verify")
-async def otp_verify(payload: OTPVerify):
-    phone = payload.phone.strip()
-    code = payload.code.strip()
-
+async def _consume_otp(phone: str, code: str) -> None:
+    """Server-side OTP verification (Twilio Verify or mock). Raises on failure."""
     if TWILIO_ENABLED and twilio_client:
         try:
             check = twilio_client.verify.v2.services(
@@ -529,6 +580,13 @@ async def otp_verify(payload: OTPVerify):
         # consume the code
         await db.otp_codes.delete_one({"phone": phone})
 
+
+@api_router.post("/auth/otp/verify")
+async def otp_verify(payload: OTPVerify):
+    phone = payload.phone.strip()
+    code = payload.code.strip()
+    await _consume_otp(phone, code)
+
     user_id = f"user_{phone.replace('+', '').replace(' ', '')}"
     await db.users.update_one(
         {"user_id": user_id},
@@ -540,6 +598,106 @@ async def otp_verify(payload: OTPVerify):
         upsert=True,
     )
     return {"verified": True, "user_id": user_id, "phone": phone}
+
+
+# ============ ACCOUNT (register / login / restore) ============
+@api_router.post("/auth/register")
+async def auth_register(payload: RegisterRequest):
+    phone = normalize_phone(payload.phone)
+    pin = payload.pin.strip()
+    name = payload.name.strip()
+    if not (pin.isdigit() and len(pin) == 4):
+        raise HTTPException(400, "PIN must be exactly 4 digits")
+    if not name:
+        raise HTTPException(400, "Name is required")
+    user_id = user_id_for_phone(phone)
+    existing = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if existing and existing.get("pin_hash"):
+        raise HTTPException(409, "Account already exists — use login")
+    # Verify the OTP server-side (never trust a client-side flag)
+    await _consume_otp(phone, payload.code.strip())
+    now_iso = datetime.now(timezone.utc).isoformat()
+    efyl_id = efyl_id_for(phone)
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$set": {
+            "user_id": user_id,
+            "efyl_id": efyl_id,
+            "phone": phone,
+            "name": name,
+            "pin_hash": bcrypt.hashpw(pin.encode("utf-8"), bcrypt.gensalt()).decode("utf-8"),
+            "failed_pin_attempts": 0,
+            "locked_until": None,
+            "last_login": now_iso,
+        }, "$setOnInsert": {"created_at": now_iso}},
+        upsert=True,
+    )
+    return {"user_id": user_id, "efyl_id": efyl_id, "name": name,
+            "phone": phone, "token": make_token(user_id)}
+
+
+@api_router.post("/auth/login")
+async def auth_login(payload: LoginRequest):
+    ident = payload.identifier.strip()
+    pin = payload.pin.strip()
+    if ident.upper().startswith("EFYL-"):
+        query: dict = {"efyl_id": ident.upper()}
+    else:
+        digits = "".join(ch for ch in ident if ch.isdigit())
+        query = {"$or": [
+            {"user_id": f"user_{digits}"},
+            {"user_id": ident},
+            {"phone": f"+{digits}"},
+        ]}
+    user = await db.users.find_one(query, {"_id": 0})
+    if not user or not user.get("pin_hash"):
+        bcrypt.checkpw(pin.encode("utf-8"), _DUMMY_PIN_HASH)  # anti-enumeration
+        raise HTTPException(401, "Invalid credentials")
+    now = datetime.now(timezone.utc)
+    locked = user.get("locked_until")
+    if locked and locked > now.isoformat():
+        raise HTTPException(429, "Too many attempts. Try again in 15 minutes.")
+    if not bcrypt.checkpw(pin.encode("utf-8"), user["pin_hash"].encode("utf-8")):
+        fails = int(user.get("failed_pin_attempts", 0)) + 1
+        upd: dict = {"failed_pin_attempts": fails}
+        if fails >= 5:
+            upd = {"failed_pin_attempts": 0,
+                   "locked_until": (now + timedelta(minutes=15)).isoformat()}
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": upd})
+        raise HTTPException(401, "Invalid credentials")
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"failed_pin_attempts": 0, "locked_until": None,
+                  "last_login": now.isoformat()}},
+    )
+    return {"user_id": user["user_id"],
+            "efyl_id": user.get("efyl_id") or efyl_id_for(user.get("phone", "")),
+            "name": user.get("name", ""),
+            "phone": user.get("phone", ""),
+            "token": make_token(user["user_id"])}
+
+
+@api_router.get("/restore")
+async def restore_account(authorization: Optional[str] = Header(None)):
+    """Returns everything the authenticated user has synced to the central
+    registry (addresses incl. photos + surveys) so a new device can rebuild
+    the local address book after login."""
+    user_id = user_id_from_auth(authorization)
+    addresses = []
+    cursor = db.addresses.find({"owner_id": user_id}, {"_id": 0}).sort("created_at", -1).limit(2000)
+    async for doc in cursor:
+        doc.setdefault("low_accuracy", False)
+        doc.setdefault("has_survey", False)
+        addresses.append(doc)
+    surveys = []
+    scursor = db.surveys.find({"owner_id": user_id}, {"_id": 0}).limit(2000)
+    async for doc in scursor:
+        surveys.append(doc)
+    user = await db.users.find_one(
+        {"user_id": user_id},
+        {"_id": 0, "user_id": 1, "efyl_id": 1, "name": 1, "phone": 1, "created_at": 1},
+    )
+    return {"user": user, "addresses": addresses, "surveys": surveys}
 
 
 # ============ SURVEY ENDPOINTS ============

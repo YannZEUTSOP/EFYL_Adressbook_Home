@@ -309,7 +309,6 @@ export default function SurveyScreen() {
     Alert.alert(t.survey.saveSuccess, '');
     router.replace(`/address/${encodeURIComponent(addressId)}`);
   };
-
   const ChoiceRow = <T extends string>(
     options: { v: T; label: string; desc?: string }[],
     current: T | '',

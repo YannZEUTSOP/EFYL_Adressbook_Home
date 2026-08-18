@@ -14,6 +14,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export type AuthUser = {
+  user_id: string;
+  efyl_id: string;
+  name: string;
+  phone: string;
+  token: string;
+};
+
 export type AddressPhoto = {
   base64: string;
   lat: number | null;
@@ -43,6 +51,7 @@ export type AddressDTO = {
   azimuth_degrees?: number | null;
   photo_base64?: string | null;
   photos?: AddressPhoto[] | null;
+  photos_count?: number | null;
   lat_raw?: number | null;
   lng_raw?: number | null;
   lat_corrected?: number | null;
@@ -109,6 +118,15 @@ export const Api = {
     request<{ verified: boolean; user_id: string; phone: string }>('/auth/otp/verify', {
       method: 'POST',
       body: JSON.stringify({ phone, code }),
+    }),
+  // Account (phone + 4-digit PIN credentials)
+  register: (data: { phone: string; name: string; pin: string; code: string }) =>
+    request<AuthUser>('/auth/register', { method: 'POST', body: JSON.stringify(data) }),
+  login: (identifier: string, pin: string) =>
+    request<AuthUser>('/auth/login', { method: 'POST', body: JSON.stringify({ identifier, pin }) }),
+  restore: (token: string) =>
+    request<{ user: any; addresses: AddressDTO[]; surveys: HouseholdSurvey[] }>('/restore', {
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     }),
   // Surveys
   saveSurvey: (s: HouseholdSurvey) =>

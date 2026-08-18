@@ -45,6 +45,9 @@ export type UserState = {
   loggedIn: boolean;
   phone?: string;
   userId?: string;
+  name?: string;
+  efylId?: string;
+  token?: string;
 };
 
 async function getJSON<T>(key: string, fallback: T): Promise<T> {
@@ -57,7 +60,17 @@ async function getJSON<T>(key: string, fallback: T): Promise<T> {
 }
 
 async function setJSON(key: string, value: unknown): Promise<void> {
-  await AsyncStorage.setItem(key, JSON.stringify(value));
+  try {
+    await AsyncStorage.setItem(key, JSON.stringify(value));
+  } catch (e: any) {
+    const msg = String(e?.message || e);
+    // Quota / disk-full errors must surface as a clear, catchable signal
+    // instead of an uncaught crash (field incident Aug 2026).
+    if (/quota|exceeded|full|SQLITE_FULL|storage/i.test(msg)) {
+      throw new Error('STORAGE_FULL');
+    }
+    throw e;
+  }
 }
 
 export const Storage = {

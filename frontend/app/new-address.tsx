@@ -456,8 +456,16 @@ export default function NewAddress() {
       has_survey: false,
       created_at: new Date().toISOString(),
     };
-    await saveAddress(addr);
-    router.replace(`/qr/${encodeURIComponent(computedAddressId)}`);
+    try {
+      await saveAddress(addr);
+      router.replace(`/qr/${encodeURIComponent(computedAddressId)}`);
+    } catch (e: any) {
+      if (String(e?.message || '').includes('STORAGE_FULL')) {
+        notify('💾', t.newAddress.storageFull);
+      } else {
+        notify('💾', "Erreur d'enregistrement. Réessayez.");
+      }
+    }
   };
 
   return (
