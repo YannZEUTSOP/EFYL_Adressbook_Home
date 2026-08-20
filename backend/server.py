@@ -203,6 +203,7 @@ class Person(BaseModel):
     profession: str = ""
     frequented_place: str = ""
     places: List[dict] = []   # [{category, name, frequency, reason}]
+    no_places: bool = False   # explicit "does not travel" (baby, elderly...)
 
 
 class Commerce(BaseModel):
@@ -210,6 +211,7 @@ class Commerce(BaseModel):
     owner: str = ""
     phone: str = ""
     products: str = ""
+    workers: int = 0
     hours_weekdays: str = ""
     hours_saturday: str = ""
     hours_sunday: str = ""
@@ -221,6 +223,10 @@ class PublicService(BaseModel):
     category_other: str = ""
     managing_org: str = ""
     phone: str = ""
+    workers: Optional[int] = None    # teachers, doctors, agents... (None = not answered)
+    capacity_max: str = ""           # e.g. "400 élèves", "25 lits"
+    usage_current: str = ""          # e.g. "320 élèves inscrits", "40 patients/jour"
+    hours: str = ""                  # "HH:MM-HH:MM" | "closed" | ""
     notes: str = ""
 
 
@@ -778,14 +784,18 @@ async def _build_csv_content(addresses: List[dict]) -> str:
         "survey_vehicles_cars", "survey_vehicles_trucks",
         "survey_is_commerce",
         "commerce_name", "commerce_owner", "commerce_phone", "commerce_products",
+        "commerce_workers",
         "commerce_hours_weekdays", "commerce_hours_saturday", "commerce_hours_sunday",
         "public_name", "public_category", "public_category_other",
-        "public_managing_org", "public_phone", "public_notes",
+        "public_managing_org", "public_phone",
+        "public_workers", "public_capacity_max", "public_usage_current", "public_hours",
+        "public_notes",
         "heritage_name", "heritage_kind", "heritage_category", "heritage_category_other",
         "heritage_access", "heritage_entry_fee", "heritage_hours",
         "heritage_photos_allowed", "heritage_facilities", "heritage_road_access",
         "heritage_manager", "heritage_phone", "heritage_notes",
         "persons_count", "persons_summary", "persons_places",
+        "quality_issues",
     ]
     writer.writerow(headers)
 
@@ -806,6 +816,39 @@ async def _build_csv_content(addresses: List[dict]) -> str:
             )
             for p in persons if (p.get("places") or [])
         )
+        # Data-quality flags per row (mirrors the analysts' nightly QA report)
+        issues = []
+        if not s:
+            issues.append("no_survey")
+        if a.get("azimuth_degrees") in (None, ""):
+            issues.append("missing_azimuth")
+        if s:
+            stype = s.get("survey_type", "household")
+            if stype == "household":
+                if int(s.get("total_persons") or 0) != len(persons):
+                    issues.append("persons_count_mismatch")
+                if any(not (p.get("places") or []) and not p.get("no_places") for p in persons):
+                    issues.append("missing_persons_places")
+            elif stype == "commerce":
+                if not int(commerce.get("workers") or 0):
+                    issues.append("missing_commerce_workers")
+                if not commerce.get("products"):
+                    issues.append("missing_commerce_products")
+                if not (commerce.get("hours_weekdays") or commerce.get("hours_saturday") or commerce.get("hours_sunday")):
+                    issues.append("missing_commerce_hours")
+            elif stype == "public":
+                if not public.get("managing_org"):
+                    issues.append("missing_public_managing_org")
+                if not public.get("phone"):
+                    issues.append("missing_public_phone")
+                if public.get("workers") in (None, ""):
+                    issues.append("missing_public_workers")
+                if not public.get("capacity_max"):
+                    issues.append("missing_public_capacity")
+                if not public.get("usage_current"):
+                    issues.append("missing_public_usage")
+                if not public.get("hours"):
+                    issues.append("missing_public_hours")
         row = [
             a.get("address_id", ""), a.get("district", ""), a.get("sector", ""),
             a.get("street_id", ""), a.get("house_number", ""),
@@ -834,16 +877,21 @@ async def _build_csv_content(addresses: List[dict]) -> str:
             s.get("is_commerce", ""),
             commerce.get("name", ""), commerce.get("owner", ""),
             commerce.get("phone", ""), commerce.get("products", ""),
+            commerce.get("workers", ""),
             commerce.get("hours_weekdays", ""), commerce.get("hours_saturday", ""),
             commerce.get("hours_sunday", ""),
             public.get("name", ""), public.get("category", ""), public.get("category_other", ""),
-            public.get("managing_org", ""), public.get("phone", ""), public.get("notes", ""),
+            public.get("managing_org", ""), public.get("phone", ""),
+            public.get("workers", ""), public.get("capacity_max", ""),
+            public.get("usage_current", ""), public.get("hours", ""),
+            public.get("notes", ""),
             heritage.get("name", ""), heritage.get("kind", ""), heritage.get("category", ""),
             heritage.get("category_other", ""),
             heritage.get("access", ""), heritage.get("entry_fee", ""), heritage.get("hours", ""),
             heritage.get("photos_allowed", ""), heritage.get("facilities", ""), heritage.get("road_access", ""),
             heritage.get("manager", ""), heritage.get("phone", ""), heritage.get("notes", ""),
             len(persons), persons_summary, persons_places,
+            "|".join(issues),
         ]
         writer.writerow(row)
 
@@ -973,6 +1021,20 @@ async def admin_addresses(pin: str, limit: int = 300):
             a["persons_count"] = len(s.get("persons") or [])
         out.append(a)
     return out
+
+
+@api_router.get("/admin/address/{address_id}")
+async def admin_address_full(address_id: str, pin: str):
+    """Complete record of one building: address + full survey answers + persons
+    with their frequented places. Used by the admin dashboard search."""
+    _check_pin(pin)
+    addr = await db.addresses.find_one(
+        {"address_id": address_id}, {"_id": 0, "photo_base64": 0, "photos": 0}
+    )
+    if not addr:
+        raise HTTPException(404, "Address not found")
+    survey = await db.surveys.find_one({"address_id": address_id}, {"_id": 0})
+    return {"address": addr, "survey": survey}
 
 
 @api_router.get("/admin/export/csv")

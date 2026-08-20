@@ -71,6 +71,17 @@ export default function QRScreen() {
       </View>
 
       <View style={{ paddingHorizontal: Spacing.lg, gap: Spacing.sm }}>
+        {!addr.has_survey && (
+          <>
+            <Button
+              label={t.qr.doSurveyNow}
+              variant="accent"
+              onPress={() => router.push(`/survey/${encodeURIComponent(addr.address_id)}`)}
+              testID="qr-do-survey-btn"
+            />
+            <Text style={styles.surveyHint}>{t.qr.surveyStrongHint}</Text>
+          </>
+        )}
         <Button label={`💬  ${t.qr.shareWa}`} variant="primary" onPress={onShare} testID="share-whatsapp-btn" />
         <Button label={t.qr.shareGeneric} variant="secondary" onPress={onShare} testID="share-generic-btn" />
         <Button label="📋  Copy" variant="ghost" onPress={onCopy} testID="copy-btn" />
@@ -95,4 +106,5 @@ const styles = StyleSheet.create({
   },
   code: { fontFamily: 'JetBrainsMono_700Bold', fontSize: 22, color: Colors.primary, letterSpacing: 1.5, marginTop: Spacing.lg },
   metaLine: { ...Typography.bodySm, color: Colors.textSecondary, marginTop: 6 },
+  surveyHint: { ...Typography.caption, color: '#92400E', textAlign: 'center', lineHeight: 16 },
 });

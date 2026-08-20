@@ -240,3 +240,11 @@ agent_communication_v5:
       in tests/test_efyl_v5_account.py; frontend migration validated end-to-end incl. saturated-device
       repair). Post-review: /restore user projection made explicit. Test account: +237699000111 /
       PIN 1234 / EFYL-90AF88. OTP still MOCKED (123456).
+
+agent_communication_v6:
+  - agent: "main"
+    message: |
+      Iteration 9 (data-quality batch): all green — 109/109 backend (new tests/test_efyl_v6_batch9.py),
+      frontend flows validated (admin search, QR survey CTA, kitchen hint, persons count banner,
+      places required, workers/capacity/usage/hours public+commerce). Azimuth step-3 guard verified
+      via source (web GPS flaky under Playwright). Legacy test_s4_bifurcation updated for heritage.

@@ -54,6 +54,7 @@ export default function NewAddress() {
   // Step 3 — compass + photos (multiple, each with GPS + bearing)
   const [compassDeg, setCompassDeg] = useState<number | null>(null);
   const [lockedAzimuth, setLockedAzimuth] = useState<number | null>(null);
+  const [azimuthError, setAzimuthError] = useState(false);
   const [photos, setPhotos] = useState<AddressPhoto[]>([]);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraMode, setCameraMode] = useState<'photo' | 'azimuth'>('photo');
@@ -421,6 +422,7 @@ export default function NewAddress() {
   const lockDirection = () => {
     if (compassDeg !== null) {
       setLockedAzimuth(compassDeg);
+      setAzimuthError(false);
       try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch { /* ignore */ }
     }
   };
@@ -671,6 +673,31 @@ export default function NewAddress() {
                 )}
               </View>
 
+              {/* Manual direction fallback — azimuth is REQUIRED (data-quality report) */}
+              <View style={styles.manualDirCard}>
+                <Text style={styles.compassHint}>{t.newAddress.manualDirection}</Text>
+                <View style={styles.dirGrid}>
+                  {[
+                    { lbl: 'N', deg: 0 }, { lbl: 'NE', deg: 45 }, { lbl: 'E', deg: 90 }, { lbl: 'SE', deg: 135 },
+                    { lbl: 'S', deg: 180 }, { lbl: 'SO', deg: 225 }, { lbl: 'O', deg: 270 }, { lbl: 'NO', deg: 315 },
+                  ].map((d) => (
+                    <TouchableOpacity
+                      key={d.lbl}
+                      style={[styles.dirChip, lockedAzimuth === d.deg && styles.dirChipActive]}
+                      onPress={() => { setLockedAzimuth(d.deg); setAzimuthError(false); }}
+                      testID={`dir-${d.lbl}`}
+                    >
+                      <Text style={[styles.dirChipTxt, lockedAzimuth === d.deg && styles.dirChipTxtActive]}>
+                        {d.lbl}
+                      </Text>
+                      <Text style={[styles.dirChipDeg, lockedAzimuth === d.deg && styles.dirChipTxtActive]}>
+                        {d.deg}°
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
               {/* Photos (multiple, GPS + bearing per photo) */}
               <View style={styles.photoCard}>
                 <Text style={styles.compassLabel}>
@@ -700,9 +727,22 @@ export default function NewAddress() {
                 </View>
               </View>
 
+              {azimuthError && (
+                <View style={styles.azErrBox} testID="azimuth-error">
+                  <Text style={styles.azErrTxt}>{t.newAddress.azimuthRequired}</Text>
+                </View>
+              )}
               <View style={{ flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.md }}>
                 <Button label={t.newAddress.back} variant="secondary" style={{ flex: 1 }} onPress={() => setStep(2)} />
-                <Button testID="step-3-next-btn" label={t.newAddress.next} style={{ flex: 1 }} onPress={() => setStep(4)} />
+                <Button
+                  testID="step-3-next-btn"
+                  label={t.newAddress.next}
+                  style={{ flex: 1 }}
+                  onPress={() => {
+                    if (lockedAzimuth === null) { setAzimuthError(true); return; }
+                    setStep(4);
+                  }}
+                />
               </View>
             </View>
           )}
@@ -890,6 +930,25 @@ const styles = StyleSheet.create({
   photoAdd: { width: 96, height: 96, borderRadius: Radius.md, borderWidth: 2, borderStyle: 'dashed', borderColor: Colors.primary, alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: '#F0F9F4' },
   photoAddTxt: { ...Typography.caption, color: Colors.primary, fontFamily: 'DMSans_700Bold', textAlign: 'center' },
   aimHint: { ...Typography.caption, color: Colors.textSecondary, textAlign: 'center', marginTop: 4 },
+  manualDirCard: {
+    backgroundColor: Colors.card, borderRadius: Radius.lg, padding: Spacing.md,
+    marginTop: Spacing.md, ...Shadows.card,
+  },
+  dirGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
+  dirChip: {
+    width: 64, alignItems: 'center', paddingVertical: 8,
+    borderRadius: Radius.md, borderWidth: 1.5, borderColor: Colors.divider,
+    backgroundColor: Colors.surface,
+  },
+  dirChipActive: { borderColor: Colors.primary, backgroundColor: '#E8F3ED' },
+  dirChipTxt: { fontFamily: 'DMSans_700Bold', fontSize: 16, color: Colors.textPrimary },
+  dirChipTxtActive: { color: Colors.primary },
+  dirChipDeg: { ...Typography.caption, color: Colors.textTertiary },
+  azErrBox: {
+    backgroundColor: '#FEE2E2', borderRadius: Radius.md, padding: Spacing.md,
+    marginTop: Spacing.md, borderWidth: 1, borderColor: '#FCA5A5',
+  },
+  azErrTxt: { ...Typography.bodySm, color: Colors.error, lineHeight: 19 },
   camOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   camCross: { alignItems: 'center', justifyContent: 'center' },
   camHeading: { color: '#fff', fontFamily: 'JetBrainsMono_700Bold', fontSize: 32, marginTop: 12, textShadowColor: 'rgba(0,0,0,0.7)', textShadowRadius: 6 },

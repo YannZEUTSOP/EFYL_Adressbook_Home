@@ -32,6 +32,7 @@ export type Person = {
   profession: string;
   frequented_place: string;
   places: PersonPlace[];
+  no_places: boolean;          // explicit "does not travel" (baby, elderly...)
 };
 
 export type Commerce = {
@@ -39,6 +40,7 @@ export type Commerce = {
   owner: string;
   phone: string;
   products: string;
+  workers: number;
   hours_weekdays: string;
   hours_saturday: string;
   hours_sunday: string;
@@ -52,6 +54,10 @@ export type PublicService = {
   category_other: string;
   managing_org: string;
   phone: string;
+  workers: number | null;      // teachers, doctors, agents... (null = not answered)
+  capacity_max: string;        // e.g. "400 élèves", "25 lits"
+  usage_current: string;       // e.g. "320 élèves inscrits", "40 patients/jour"
+  hours: string;               // "HH:MM-HH:MM" | "closed" | ""
   notes: string;
 };
 
@@ -150,7 +156,7 @@ export const emptySurvey = (address_id: string, survey_type: SurveyType = 'house
 
 export const emptyPerson = (): Person => ({
   name: '', phone_or_email: '', age: 0, gender: '',
-  education: '', profession: '', frequented_place: '', places: [],
+  education: '', profession: '', frequented_place: '', places: [], no_places: false,
 });
 
 export const emptyPlace = (): PersonPlace => ({
@@ -158,12 +164,13 @@ export const emptyPlace = (): PersonPlace => ({
 });
 
 export const emptyCommerce = (): Commerce => ({
-  name: '', owner: '', phone: '', products: '',
+  name: '', owner: '', phone: '', products: '', workers: 0,
   hours_weekdays: '', hours_saturday: '', hours_sunday: '',
 });
 
 export const emptyPublicService = (): PublicService => ({
-  name: '', category: '', category_other: '', managing_org: '', phone: '', notes: '',
+  name: '', category: '', category_other: '', managing_org: '', phone: '',
+  workers: null, capacity_max: '', usage_current: '', hours: '', notes: '',
 });
 
 export const emptyHeritage = (): HeritageSite => ({

@@ -105,7 +105,7 @@ export default function SurveyScreen() {
     setErrorMsg('');
   };
 
-  const setCommerce = (field: string, v: string) => {
+  const setCommerce = (field: string, v: any) => {
     setSurvey((s) => ({
       ...s,
       commerce: { ...(s.commerce || emptyCommerce()), [field]: v },
@@ -113,7 +113,7 @@ export default function SurveyScreen() {
     setErrorMsg('');
   };
 
-  const setPublic = (field: string, v: string) => {
+  const setPublic = (field: string, v: any) => {
     setSurvey((s) => ({
       ...s,
       public_service: { ...(s.public_service || emptyPublicService()), [field]: v },
@@ -213,7 +213,9 @@ export default function SurveyScreen() {
       const c = survey.commerce || emptyCommerce();
       if (!c.name.trim()) { setErrorMsg(t.survey.errRequired); return false; }
       if (parseProducts(c.products).length === 0) { setErrorMsg(t.survey.errProducts); return false; }
-      for (const h of [c.hours_weekdays, c.hours_saturday, c.hours_sunday]) {
+      if (!Number.isFinite(c.workers) || (c.workers ?? 0) < 1) { setErrorMsg(t.survey.errWorkers); return false; }
+      if (!c.hours_weekdays || !isValidHours(c.hours_weekdays)) { setErrorMsg(t.survey.errHoursRequired); return false; }
+      for (const h of [c.hours_saturday, c.hours_sunday]) {
         if (h && !isValidHours(h)) { setErrorMsg(t.survey.h_invalid); return false; }
       }
     }
@@ -222,6 +224,12 @@ export default function SurveyScreen() {
       if (!p.name.trim()) { setErrorMsg(t.survey.errRequired); return false; }
       if (!p.category) { setErrorMsg(t.survey.errChoice); return false; }
       if (p.category === 'other' && !p.category_other.trim()) { setErrorMsg(t.survey.errRequired); return false; }
+      if (!p.managing_org.trim()) { setErrorMsg(t.survey.errPubOrg); return false; }
+      if (!p.phone.trim()) { setErrorMsg(t.survey.errPubPhone); return false; }
+      if (p.workers === null || p.workers === undefined) { setErrorMsg(t.survey.errPublicWorkers); return false; }
+      if (!p.capacity_max.trim()) { setErrorMsg(t.survey.errCapacity); return false; }
+      if (!p.usage_current.trim()) { setErrorMsg(t.survey.errUsage); return false; }
+      if (!p.hours || !isValidHours(p.hours)) { setErrorMsg(t.survey.errPubHours); return false; }
     }
     if (stepKey === 'heritage') {
       const h = survey.heritage || emptyHeritage();
@@ -282,6 +290,10 @@ export default function SurveyScreen() {
       setErrorMsg(t.survey.errMaxAge); return;
     }
     if (!personDraft.gender || !personDraft.education) { setErrorMsg(t.survey.errChoice); return; }
+    // Frequented places are REQUIRED (data-quality report) unless explicitly "does not travel"
+    if (!personDraft.no_places && (personDraft.places || []).length === 0) {
+      setErrorMsg(t.survey.errPlacesRequired); return;
+    }
     setSurvey((s) => {
       const persons = [...s.persons];
       if (editingIdx !== null) persons[editingIdx] = personDraft;
@@ -296,6 +308,11 @@ export default function SurveyScreen() {
   const finishPersons = () => {
     if (survey.persons.length === 0) {
       setErrorMsg(t.survey.p_atLeastOne);
+      return;
+    }
+    // Declared residents MUST all be recorded (data-quality report)
+    if (survey.persons.length < survey.total_persons) {
+      setErrorMsg(`${survey.total_persons - survey.persons.length} ${t.survey.errPersonsCount}`);
       return;
     }
     setStepKey('summary');
@@ -562,6 +579,9 @@ export default function SurveyScreen() {
                 { v: 'living_room', label: t.survey.opt_living_room },
                 { v: 'separate', label: t.survey.opt_separate },
               ], survey.kitchen_position, (v) => set('kitchen_position', v), 'kitchen')}
+              <View style={styles.hintBox} testID="kitchen-hint">
+                <Text style={styles.hintBoxTxt}>{t.survey.q_kitchen_hint}</Text>
+              </View>
             </View>
           )}
 
@@ -653,6 +673,7 @@ export default function SurveyScreen() {
                 t={t}
                 language={language}
               />
+              {NumberField(t.survey.c_workers, survey.commerce?.workers ?? 0, (n) => setCommerce('workers', n), 'c-workers')}
               <HoursField
                 label={t.survey.c_weekdays}
                 value={survey.commerce?.hours_weekdays || ''}
@@ -708,6 +729,56 @@ export default function SurveyScreen() {
               <Label>{t.survey.pub_phone}</Label>
               <TextInput style={styles.text} value={survey.public_service?.phone || ''}
                 onChangeText={(v) => setPublic('phone', v)} keyboardType="phone-pad" testID="pub-phone" />
+              <TouchableOpacity
+                style={styles.noPhoneChip}
+                onPress={() => setPublic('phone', 'aucun')}
+                testID="pub-no-phone"
+              >
+                <Text style={styles.noPhoneChipTxt}>🚫 {t.survey.pub_noPhone}</Text>
+              </TouchableOpacity>
+              <Label>{t.survey.pub_workers}</Label>
+              <TextInput
+                style={styles.text}
+                value={survey.public_service?.workers === null || survey.public_service?.workers === undefined
+                  ? '' : String(survey.public_service.workers)}
+                onChangeText={(v) => {
+                  const digits = v.replace(/\D/g, '');
+                  setPublic('workers', digits === '' ? null : parseInt(digits, 10));
+                }}
+                keyboardType="number-pad"
+                placeholder="ex : 12"
+                placeholderTextColor={Colors.textTertiary}
+                testID="pub-workers"
+              />
+              <Label>{t.survey.pub_capacity}</Label>
+              <TextInput
+                style={styles.text}
+                value={survey.public_service?.capacity_max || ''}
+                onChangeText={(v) => setPublic('capacity_max', v)}
+                placeholder={survey.public_service?.category === 'school' ? t.survey.pub_capacity_school
+                  : survey.public_service?.category === 'health' ? t.survey.pub_capacity_health
+                  : t.survey.pub_capacity_generic}
+                placeholderTextColor={Colors.textTertiary}
+                testID="pub-capacity"
+              />
+              <Label>{t.survey.pub_usage}</Label>
+              <TextInput
+                style={styles.text}
+                value={survey.public_service?.usage_current || ''}
+                onChangeText={(v) => setPublic('usage_current', v)}
+                placeholder={survey.public_service?.category === 'school' ? t.survey.pub_usage_school
+                  : survey.public_service?.category === 'health' ? t.survey.pub_usage_health
+                  : t.survey.pub_usage_generic}
+                placeholderTextColor={Colors.textTertiary}
+                testID="pub-usage"
+              />
+              <HoursField
+                label={t.survey.pub_hours}
+                value={survey.public_service?.hours || ''}
+                onChange={(v) => setPublic('hours', v)}
+                t={t}
+                testID="pub-hours"
+              />
               <Label>{t.survey.pub_notes}</Label>
               <TextInput style={[styles.text, { height: 60 }]} multiline value={survey.public_service?.notes || ''}
                 onChangeText={(v) => setPublic('notes', v)} testID="pub-notes" />
@@ -825,6 +896,34 @@ export default function SurveyScreen() {
           {stepKey === 'personEntry' && personMode === 'list' && (
             <View testID="persons-list">
               <Text style={styles.qTitle}>{t.survey.pl_listTitle} ({survey.persons.length})</Text>
+              <View
+                style={[styles.countBanner, survey.persons.length >= survey.total_persons ? styles.countOk : styles.countWarn]}
+                testID="persons-count-banner"
+              >
+                <Text style={styles.countBannerTxt}>
+                  {survey.persons.length >= survey.total_persons
+                    ? t.survey.personsMatchOk
+                    : `${survey.persons.length} ${t.survey.personsRecorded} ${survey.total_persons}`}
+                </Text>
+                <View style={styles.countAdjustRow}>
+                  <Text style={styles.countAdjustLbl}>{t.survey.personsDeclared} :</Text>
+                  <TouchableOpacity
+                    style={styles.numStep}
+                    onPress={() => set('total_persons', Math.max(Math.max(1, survey.persons.length), survey.total_persons - 1))}
+                    testID="declared-dec"
+                  >
+                    <Ionicons name="remove" size={14} color={Colors.primary} />
+                  </TouchableOpacity>
+                  <Text style={styles.countAdjustVal}>{survey.total_persons}</Text>
+                  <TouchableOpacity
+                    style={styles.numStep}
+                    onPress={() => set('total_persons', survey.total_persons + 1)}
+                    testID="declared-inc"
+                  >
+                    <Ionicons name="add" size={14} color={Colors.primary} />
+                  </TouchableOpacity>
+                </View>
+              </View>
               {survey.persons.length === 0 && (
                 <Text style={styles.intro}>{t.survey.pl_none}</Text>
               )}
@@ -889,9 +988,23 @@ export default function SurveyScreen() {
               <Label>{t.survey.p_profession}</Label>
               <TextInput style={styles.text} value={personDraft.profession} onChangeText={(v) => setDraftField('profession', v)} testID="p-profession" />
 
-              {/* Frequented places (3-4 recommended per person) */}
+              {/* Frequented places — REQUIRED unless the person does not travel */}
               <Text style={styles.qTitle}>{t.survey.pp_title}</Text>
               <Text style={styles.intro}>{t.survey.pp_hint}</Text>
+              <TouchableOpacity
+                style={styles.noPlacesRow}
+                onPress={() => setDraftField('no_places', !personDraft.no_places)}
+                testID="p-no-places"
+              >
+                <Ionicons
+                  name={personDraft.no_places ? 'checkbox' : 'square-outline'}
+                  size={22}
+                  color={Colors.primary}
+                />
+                <Text style={styles.noPlacesTxt}>{t.survey.p_noPlaces}</Text>
+              </TouchableOpacity>
+              {!personDraft.no_places && (
+                <>
               {(personDraft.places || []).map((pl, i) => (
                 <View key={i} style={styles.placeCard} testID={`place-card-${i}`}>
                   <View style={{ flex: 1 }}>
@@ -961,6 +1074,8 @@ export default function SurveyScreen() {
                   testID="pp-add-btn"
                 />
               </View>
+                </>
+              )}
             </View>
           )}
 
@@ -1029,6 +1144,10 @@ export default function SurveyScreen() {
                   </Text>
                   {!!survey.public_service?.managing_org && <Text style={styles.summaryLine}>🏢 {survey.public_service.managing_org}</Text>}
                   {!!survey.public_service?.phone && <Text style={styles.summaryLine}>📞 {survey.public_service.phone}</Text>}
+                  <Text style={styles.summaryLine}>👷 {t.survey.pub_workers} : {survey.public_service?.workers ?? '—'}</Text>
+                  <Text style={styles.summaryLine}>📊 {t.survey.pub_capacity} : {survey.public_service?.capacity_max || '—'}</Text>
+                  <Text style={styles.summaryLine}>📈 {t.survey.pub_usage} : {survey.public_service?.usage_current || '—'}</Text>
+                  <Text style={styles.summaryLine}>🕐 {formatHours(survey.public_service?.hours || '', t)}</Text>
                   {!!survey.public_service?.notes && <Text style={styles.summaryLine}>📝 {survey.public_service.notes}</Text>}
                 </Card>
               )}
@@ -1159,6 +1278,19 @@ const styles = StyleSheet.create({
   numInput: { width: 60, height: 44, textAlign: 'center', fontFamily: 'JetBrainsMono_700Bold', fontSize: 18, color: Colors.primary, backgroundColor: Colors.card, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.divider },
   errorBox: { flexDirection: 'row', gap: 6, alignItems: 'center', backgroundColor: '#FEE2E2', padding: Spacing.md, borderRadius: Radius.md, marginTop: Spacing.md },
   errorTxt: { ...Typography.bodySm, color: Colors.error, flex: 1 },
+  hintBox: { backgroundColor: '#FEF3C7', borderRadius: Radius.md, padding: Spacing.md, marginTop: Spacing.md, borderWidth: 1, borderColor: '#FCD34D' },
+  hintBoxTxt: { ...Typography.bodySm, color: '#92400E', lineHeight: 19 },
+  noPhoneChip: { alignSelf: 'flex-start', backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.divider, borderRadius: Radius.pill, paddingHorizontal: 12, paddingVertical: 6, marginTop: 6 },
+  noPhoneChipTxt: { ...Typography.caption, color: Colors.textSecondary },
+  noPlacesRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10 },
+  noPlacesTxt: { ...Typography.bodySm, color: Colors.textPrimary, flex: 1 },
+  countBanner: { borderRadius: Radius.md, padding: Spacing.md, marginBottom: Spacing.sm, borderWidth: 1 },
+  countOk: { backgroundColor: '#F0F9F4', borderColor: '#86EFAC' },
+  countWarn: { backgroundColor: '#FEF3C7', borderColor: '#FCD34D' },
+  countBannerTxt: { ...Typography.label, color: Colors.textPrimary },
+  countAdjustRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
+  countAdjustLbl: { ...Typography.caption, color: Colors.textSecondary },
+  countAdjustVal: { fontFamily: 'DMSans_700Bold', fontSize: 16, color: Colors.textPrimary, minWidth: 24, textAlign: 'center' },
   footer: { flexDirection: 'row', gap: Spacing.sm, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, backgroundColor: Colors.card, borderTopWidth: 1, borderTopColor: Colors.divider },
   summaryCard: { backgroundColor: Colors.card, padding: Spacing.md, borderRadius: Radius.md, marginBottom: Spacing.sm, ...Shadows.card },
   summaryTitle: { ...Typography.label, color: Colors.textSecondary, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 },

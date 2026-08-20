@@ -108,3 +108,15 @@ All feedback from user's tester in Spain implemented & tested (iteration_6, 57/5
 - ROOT CAUSE FIX (quota crash): base64 photos moved OUT of AsyncStorage/localStorage into dedicated PhotoStore (src/services/photoStore.ts — IndexedDB on web, expo-file-system JSON per address on native). migratePhotosOut() runs at AppContext startup: auto-repairs saturated devices (validated: 1 MB localStorage → 795 bytes, photos preserved & displayed). Sync queue stores slim payloads; syncNow rehydrates photos from PhotoStore and uploads in chunks of 4. STORAGE_FULL friendly error replaces crash. photos_count field added (frontend + backend models + CSV export).
 - ACCOUNT SYSTEM (phone + 4-digit PIN, guest mode kept): POST /api/auth/register (name+phone+PIN+OTP, bcrypt hash, 409 if exists), POST /api/auth/login (phone OR EFYL-XXXXXX + PIN, 5 fails → 15 min lockout, anti-enumeration dummy hash), GET /api/restore (JWT Bearer 90d, JWT_SECRET in backend/.env) → pulls all synced addresses(+photos)+surveys to a new device. EFYL ID = stable hash of phone (EFYL-XXXXXX). user_id format unchanged (user_<digits>) so pre-account synced data stays linked. login.tsx fully rewritten (choice/register/OTP/done/login modes); profile shows name + EFYL ID.
 - Restore user projection restricted to explicit fields (post-review hardening).
+
+## v6 — Data-Quality batch (réponse au Rapport Qualité Fotouni) — Août 2026 (iteration_9: 109/109 backend + frontend PASS)
+- Azimut OBLIGATOIRE (step 3 new-address) + fallback manuel 8 directions (dir-N..dir-NO chips) — répond aux 64.7% missing_azimuth.
+- Enquête foyer : bandeau compteur personnes (persons-count-banner, +/- déclaré inline), 'Terminer' bloqué si enregistrées < déclarées (persons_count_mismatch 69.2%). Lieux fréquentés OBLIGATOIRES par personne sauf case 'ne se déplace pas' (no_places) — répond aux 97.1% missing_persons_places.
+- Commerce : NOUVEAU champ workers (obligatoire >=1) + horaires semaine obligatoires.
+- Service public : NOUVEAUX champs obligatoires managing_org, phone (+chip 'Pas de téléphone'), workers, capacity_max, usage_current, hours (placeholders contextuels école/santé).
+- Hint cuisine séparée = bâtiment à part (kitchen-hint).
+- Écran QR : CTA accent 'Faire l'enquête maintenant' si pas d'enquête (no_survey 45%).
+- CSV admin : nouvelles colonnes commerce_workers, public_workers, public_capacity_max, public_usage_current, public_hours + colonne quality_issues (flags QA par ligne).
+- NOUVEAU GET /api/admin/address/{id}?pin= + recherche bâtiment dans /admin (fiche complète : adresse+enquête+habitants+lieux).
+- Rapport utilisateur : /app/memory/RAPPORT_CORRECTIONS_QUALITE_DONNEES_FR.md
+- IMPORTANT (réponse utilisateur) : l'export du soir doit utiliser le bouton Admin 'Exporter tout (CSV admin)' (serveur), PAS l'export Profil (local uniquement).

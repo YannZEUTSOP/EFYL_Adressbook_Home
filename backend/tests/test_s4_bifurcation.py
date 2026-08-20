@@ -178,7 +178,7 @@ class TestCommercesEndpoint:
         r = client.get(f"{API}/commerces", timeout=15)
         assert r.status_code == 200
         for item in r.json():
-            assert item.get("is_commerce") is True or item.get("is_public") is True, item
+            assert item.get("is_commerce") is True or item.get("is_public") is True or item.get("is_heritage") is True, item
 
 
 # ----------------------- /api/addresses include_public_commerces -----------------------
