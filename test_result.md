@@ -248,3 +248,10 @@ agent_communication_v6:
       frontend flows validated (admin search, QR survey CTA, kitchen hint, persons count banner,
       places required, workers/capacity/usage/hours public+commerce). Azimuth step-3 guard verified
       via source (web GPS flaky under Playwright). Legacy test_s4_bifurcation updated for heritage.
+
+agent_communication_v6_1:
+  - agent: "main"
+    message: |
+      Enriched CSV export added (read-only copy, auto_completed column): 611 azimuths recovered from
+      photo bearings, legacy frequented_place text converted to places, 3 orphan surveys re-attached.
+      CSV survey lookup now owner-first. Verified on production data via curl; 109/109 pytest green.

@@ -211,6 +211,19 @@ export default function AdminScreen() {
           <Ionicons name="download-outline" size={18} color={Colors.white} />
           <Text style={styles.exportTxt}>{t.admin.exportAll}</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.exportBtn, { backgroundColor: Colors.accent, marginTop: 8 }]}
+          onPress={() => {
+            const url = Api.adminExportEnrichedCsvUrl(pin);
+            if (Platform.OS === 'web') window.open(url, '_blank');
+            else Linking.openURL(url).catch(() => {});
+          }}
+          testID="admin-export-enriched-btn"
+        >
+          <Ionicons name="sparkles-outline" size={18} color={Colors.white} />
+          <Text style={styles.exportTxt}>{t.admin.exportEnriched}</Text>
+        </TouchableOpacity>
+        <Text style={styles.enrichedHint}>{t.admin.exportEnrichedHint}</Text>
 
         {/* Search one building — full record (survey answers + persons + places) */}
         <Text style={styles.sectionTitle}>🔍 {t.admin.searchTitle}</Text>
@@ -401,6 +414,7 @@ const styles = StyleSheet.create({
     marginHorizontal: Spacing.lg, marginTop: Spacing.lg, paddingVertical: 14,
   },
   exportTxt: { color: Colors.white, fontFamily: 'DMSans_700Bold', fontSize: 15 },
+  enrichedHint: { ...Typography.caption, color: Colors.textTertiary, marginHorizontal: Spacing.lg, marginTop: 6, lineHeight: 15 },
   searchRow: {
     flexDirection: 'row', gap: 8, marginHorizontal: Spacing.lg, alignItems: 'center',
   },

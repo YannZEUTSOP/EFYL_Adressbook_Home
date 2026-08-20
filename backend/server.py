@@ -758,8 +758,12 @@ async def delete_survey(address_id: str, owner_id: str = "guest"):
 
 
 # ============ EXPORT CSV ============
-async def _build_csv_content(addresses: List[dict]) -> str:
-    """Shared CSV builder used by /export/csv and /admin/export/csv."""
+async def _build_csv_content(addresses: List[dict], enrich: bool = False) -> str:
+    """Shared CSV builder used by /export/csv and /admin/export/csv.
+    When enrich=True (read-only ENRICHED COPY), recovers data that was recorded
+    'one way or another': azimuth from photo compass bearings, frequented places
+    from the legacy free-text field, declared-persons coherence — and flags every
+    auto-recovered field in the auto_completed column. The database is NEVER modified."""
     output = io.StringIO()
     writer = csv.writer(output)
 
@@ -797,14 +801,50 @@ async def _build_csv_content(addresses: List[dict]) -> str:
         "persons_count", "persons_summary", "persons_places",
         "quality_issues",
     ]
+    if enrich:
+        headers.append("auto_completed")
     writer.writerow(headers)
 
     for a in addresses:
-        s = await db.surveys.find_one({"address_id": a["address_id"]}, {"_id": 0}) or {}
+        # Prefer the survey made by the row's owner (duplicate address codes can
+        # exist across devices), then fall back to any survey for that code.
+        s = await db.surveys.find_one(
+            {"address_id": a["address_id"], "owner_id": a.get("owner_id")}, {"_id": 0}
+        ) or await db.surveys.find_one({"address_id": a["address_id"]}, {"_id": 0}) or {}
         commerce = (s.get("commerce") or {}) if s else {}
         public = (s.get("public_service") or {}) if s else {}
         heritage = (s.get("heritage") or {}) if s else {}
         persons = s.get("persons", []) if s else []
+        auto: List[str] = []
+        if enrich:
+            if a.get("_orphan_survey"):
+                auto.append("orphan_survey_no_address")
+            # Azimuth recovered from the compass bearing stored with each photo
+            if a.get("azimuth_degrees") in (None, ""):
+                bearings = [p.get("bearing") for p in (a.get("photos") or [])
+                            if p.get("bearing") not in (None, "")]
+                if bearings:
+                    a = {**a, "azimuth_degrees": bearings[0]}
+                    auto.append("azimuth_from_photo_bearing")
+            # Frequented places recovered from the legacy free-text field
+            if persons:
+                fixed = []
+                changed = False
+                for p in persons:
+                    if not (p.get("places") or []) and (p.get("frequented_place") or "").strip():
+                        p = {**p, "places": [{
+                            "category": "", "name": p["frequented_place"].strip(),
+                            "frequency": "", "reason": "reconstitué depuis l'ancien champ texte",
+                        }]}
+                        changed = True
+                    fixed.append(p)
+                if changed:
+                    persons = fixed
+                    auto.append("places_from_legacy_text")
+            # Declared total lower than the actually recorded list → trust the list
+            if s and int(s.get("total_persons") or 0) < len(persons):
+                s = {**s, "total_persons": len(persons)}
+                auto.append("total_persons_from_list")
         persons_summary = "; ".join(
             f"{p.get('name','?')}({p.get('age','?')}|{p.get('gender','?')}|{p.get('education','?')}|{p.get('profession','')})"
             for p in persons
@@ -893,6 +933,8 @@ async def _build_csv_content(addresses: List[dict]) -> str:
             len(persons), persons_summary, persons_places,
             "|".join(issues),
         ]
+        if enrich:
+            row.append("|".join(auto))
         writer.writerow(row)
 
     content = output.getvalue()
@@ -1046,6 +1088,32 @@ async def admin_export_csv(pin: str):
         addresses.append(doc)
     csv_content = await _build_csv_content(addresses)
     filename = f"efyl_admin_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@api_router.get("/admin/export/csv-enriched")
+async def admin_export_csv_enriched(pin: str):
+    """Read-only ENRICHED COPY of the admin CSV (auto-recovery of data recorded
+    'one way or another'). The normal export and the database stay untouched."""
+    _check_pin(pin)
+    addresses = []
+    addr_ids = set()
+    async for doc in db.addresses.find({}, {"_id": 0}):
+        addresses.append(doc)
+        addr_ids.add(doc["address_id"])
+    # Surveys without any address row (orphans) would otherwise be invisible
+    seen_orphans = set()
+    async for sdoc in db.surveys.find({}, {"_id": 0, "address_id": 1}):
+        aid = sdoc.get("address_id")
+        if aid and aid not in addr_ids and aid not in seen_orphans:
+            seen_orphans.add(aid)
+            addresses.append({"address_id": aid, "_orphan_survey": True})
+    csv_content = await _build_csv_content(addresses, enrich=True)
+    filename = f"efyl_admin_export_ENRICHI_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
     return Response(
         content=csv_content,
         media_type="text/csv",

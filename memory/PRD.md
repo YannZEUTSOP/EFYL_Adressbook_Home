@@ -120,3 +120,9 @@ All feedback from user's tester in Spain implemented & tested (iteration_6, 57/5
 - NOUVEAU GET /api/admin/address/{id}?pin= + recherche bâtiment dans /admin (fiche complète : adresse+enquête+habitants+lieux).
 - Rapport utilisateur : /app/memory/RAPPORT_CORRECTIONS_QUALITE_DONNEES_FR.md
 - IMPORTANT (réponse utilisateur) : l'export du soir doit utiliser le bouton Admin 'Exporter tout (CSV admin)' (serveur), PAS l'export Profil (local uniquement).
+
+## v6.1 — Export CSV ENRICHI (copie lecture seule) — Août 2026
+- NOUVEAU GET /api/admin/export/csv-enriched?pin= : copie enrichie du CSV admin, 85 colonnes (+auto_completed en dernière). Récupérations validées sur données réelles : 611 azimuts depuis les bearings photos (625 manquants → 17), lieux fréquentés depuis le champ texte legacy frequented_place, 3 enquêtes orphelines rattachées en lignes supplémentaires. Base NON modifiée, export normal inchangé.
+- Fix CSV (les 2 exports) : le survey lookup privilégie l'enquête du owner de la ligne avant fallback (doublons multi-appareils).
+- Bouton Admin « Exporter CSV ENRICHI (récupération auto) » (admin-export-enriched-btn) + hint.
+- 109/109 tests backend verts.

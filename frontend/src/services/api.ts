@@ -79,6 +79,8 @@ export const Api = {
     request<any[]>(`/admin/addresses?pin=${encodeURIComponent(pin)}&limit=${limit}`),
   adminExportCsvUrl: (pin: string) =>
     `${BASE}/api/admin/export/csv?pin=${encodeURIComponent(pin)}`,
+  adminExportEnrichedCsvUrl: (pin: string) =>
+    `${BASE}/api/admin/export/csv-enriched?pin=${encodeURIComponent(pin)}`,
   adminAddressFull: (pin: string, addressId: string) =>
     request<{ address: any; survey: any }>(
       `/admin/address/${encodeURIComponent(addressId)}?pin=${encodeURIComponent(pin)}`
