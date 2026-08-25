@@ -126,3 +126,8 @@ All feedback from user's tester in Spain implemented & tested (iteration_6, 57/5
 - Fix CSV (les 2 exports) : le survey lookup privilégie l'enquête du owner de la ligne avant fallback (doublons multi-appareils).
 - Bouton Admin « Exporter CSV ENRICHI (récupération auto) » (admin-export-enriched-btn) + hint.
 - 109/109 tests backend verts.
+
+## v6.2 — Référentiel PDF des questionnaires — Août 2026
+- PDF complet généré : /app/memory/EFYL_Questionnaires_Complets_FR.pdf (script /app/scripts/generate_questionnaire_pdf.py, reportlab + police DM Sans de l'app). Contenu : question commune (type de bâtiment), Foyer 17 questions + fiche par personne (7) + fiche par lieu fréquenté (4), Commerce 8, Service public 9, Patrimoine 14, Annexe création d'adresse 11. Options de réponse, mentions OBLIGATOIRE/optionnel, règles de blocage et sous-questions conditionnelles incluses. Vérifié par extraction (accents OK).
+- Téléchargement : GET /api/admin/docs/questionnaires.pdf?pin=237237 (protégé PIN, lecture seule).
+- Aucune modification fonctionnelle de l'app (demande explicite de l'utilisateur).
