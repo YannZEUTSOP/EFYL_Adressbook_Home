@@ -105,8 +105,8 @@ export default function DirectoryList() {
     <TouchableOpacity
       style={styles.row}
       activeOpacity={0.85}
-      onPress={() => router.push(`/directory/fiche/${encodeURIComponent(item.address_id)}`)}
-      testID={`dir-row-${item.address_id}`}
+      onPress={() => router.push(`/directory/fiche/${encodeURIComponent(item.key)}`)}
+      testID={`dir-row-${item.key}`}
     >
       <View style={[styles.rowIcon, { backgroundColor: `${meta[cat].color}18` }]}>
         <Ionicons name={meta[cat].icon} size={18} color={meta[cat].color} />
@@ -121,6 +121,11 @@ export default function DirectoryList() {
           {item.district}{item.sector ? ` • ${item.sector}` : ''}
           {item.house_number ? ` • n°${item.house_number}` : ''}
         </Text>
+        {item.shared_code && !!item.surveyor && (
+          <Text style={styles.rowSurveyor} numberOfLines={1}>
+            🔁 {t.directory.surveyedBy} {item.surveyor} • {new Date(item.created_at).toLocaleDateString()}
+          </Text>
+        )}
         <View style={styles.tagsLine}>
           {item.matricule ? (
             <View style={styles.matPill}>
@@ -191,7 +196,7 @@ export default function DirectoryList() {
       ) : (
         <FlatList
           data={items}
-          keyExtractor={(it) => it.address_id}
+          keyExtractor={(it) => it.key}
           renderItem={renderRow}
           contentContainerStyle={{ paddingHorizontal: Spacing.lg, paddingBottom: 120 }}
           onEndReached={loadMore}
@@ -269,6 +274,7 @@ const styles = StyleSheet.create({
   rowMetaLine: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 },
   rowCode: { fontFamily: 'JetBrainsMono_700Bold', fontSize: 11, color: Colors.primary, letterSpacing: 0.6 },
   rowPlace: { ...Typography.caption, color: Colors.textSecondary, marginTop: 1 },
+  rowSurveyor: { ...Typography.caption, fontSize: 10, color: Colors.gpsYellow, marginTop: 2 },
   tagsLine: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5, flexWrap: 'wrap' },
   matPill: {
     backgroundColor: Colors.surface, borderRadius: Radius.sm,

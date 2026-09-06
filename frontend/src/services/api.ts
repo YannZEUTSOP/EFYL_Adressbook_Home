@@ -66,6 +66,7 @@ export type AddressDTO = {
 export type DirectoryCategory = 'household' | 'commerce' | 'public' | 'heritage';
 
 export type DirectoryEntry = {
+  key: string;            // immutable record id (address codes are NOT unique)
   address_id: string;
   matricule: string;
   name: string;
@@ -79,15 +80,20 @@ export type DirectoryEntry = {
   nav_source: 'nav_point' | 'corrected' | 'gps';
   verified: boolean;
   has_survey: boolean;
+  surveyor: string;
+  shared_code: boolean;   // several buildings recorded under this same code
   created_at: string;
   distance_m?: number;
 };
 
 export type DirectoryDetail = {
+  key: string;
   address_id: string;
   matricule: string;
   name: string;
   category: DirectoryCategory;
+  surveyor: string;
+  shared_code: boolean;
   district: string;
   sector: string;
   street_id: string;
@@ -231,8 +237,8 @@ export const Api = {
       `/directory/entries?${p.toString()}`
     );
   },
-  directoryEntry: (addressId: string) =>
-    request<DirectoryDetail>(`/directory/entry/${encodeURIComponent(addressId)}`),
+  directoryEntry: (key: string) =>
+    request<DirectoryDetail>(`/directory/entry/${encodeURIComponent(key)}`),
 
   // ===== Guest identity (device-bound) =====
   guestDeviceCheck: (deviceHash: string, deviceLabel = '') =>

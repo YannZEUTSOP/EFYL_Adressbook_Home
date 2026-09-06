@@ -20,7 +20,7 @@ router = APIRouter(prefix="/api")
 
 CATEGORIES = ("household", "commerce", "public", "heritage")
 _CACHE: Dict[str, Any] = {}
-_CACHE_TTL = 45  # seconds — keeps typing in the search bar instant
+_CACHE_TTL = 10  # seconds — full index rebuild costs ~50 ms, so stay fresh
 
 
 def category_of(a: dict) -> str:
@@ -75,7 +75,14 @@ def _nav_point(a: dict) -> Dict[str, Optional[float]]:
 
 
 async def _build_index(category: str) -> List[dict]:
-    """One deduplicated, name-resolved row per address of the category."""
+    """One row per recorded building.
+
+    IMPORTANT (June 2026 audit): the address code is NOT globally unique — it is
+    derived from quartier + secteur + rue + maison typed by each surveyor, so two
+    teams working the same quartier can produce the same code for two different
+    buildings (measured cases 100 m to 1.2 km apart, 363 codes shared by 2 to 8
+    buildings). The registry therefore lists every recorded building and keys them
+    on the immutable record id, never on the address code."""
     addrs: List[dict] = []
     cursor = db.addresses.find(
         _category_query(category),
@@ -84,39 +91,41 @@ async def _build_index(category: str) -> List[dict]:
     async for a in cursor:
         addrs.append(a)
 
-    # Duplicate address codes can exist across devices → keep the richest row
-    best: Dict[str, dict] = {}
-    for a in addrs:
-        aid = a.get("address_id")
-        if not aid:
-            continue
-        cur = best.get(aid)
-        if cur is None:
-            best[aid] = a
-            continue
-        score = (1 if a.get("has_survey") else 0, a.get("created_at", ""))
-        cur_score = (1 if cur.get("has_survey") else 0, cur.get("created_at", ""))
-        if score > cur_score:
-            best[aid] = a
-
-    ids = list(best.keys())
-    names: Dict[str, str] = {}
+    ids = list({a.get("address_id") for a in addrs if a.get("address_id")})
+    # survey names: the surveyor's own survey first, then any survey for that code
+    by_pair: Dict[tuple, str] = {}
+    by_code: Dict[str, str] = {}
     if ids:
         scursor = db.surveys.find(
             {"address_id": {"$in": ids}},
-            {"_id": 0, "address_id": 1, "survey_type": 1, "family_name": 1,
+            {"_id": 0, "address_id": 1, "owner_id": 1, "survey_type": 1, "family_name": 1,
              "commerce.name": 1, "public_service.name": 1, "heritage.name": 1},
         )
         async for s in scursor:
             nm = _survey_name(s, category)
-            if nm and not names.get(s["address_id"]):
-                names[s["address_id"]] = nm
+            if not nm:
+                continue
+            by_pair[(s["address_id"], s.get("owner_id"))] = nm
+            by_code.setdefault(s["address_id"], nm)
+
+    # how many buildings share each code inside this category (collision flag)
+    code_counts: Dict[str, int] = {}
+    for a in addrs:
+        aid = a.get("address_id")
+        if aid:
+            code_counts[aid] = code_counts.get(aid, 0) + 1
 
     out: List[dict] = []
-    for aid, a in best.items():
-        name = names.get(aid) or _fallback_name(a, category)
+    for a in addrs:
+        aid = a.get("address_id")
+        if not aid:
+            continue
+        name = (by_pair.get((aid, a.get("owner_id")))
+                or by_code.get(aid)
+                or _fallback_name(a, category))
         nav = _nav_point(a)
         out.append({
+            "key": a.get("id") or f"{a.get('owner_id','')}|{aid}",
             "address_id": aid,
             "matricule": a.get("matricule", "") or "",
             "name": name,
@@ -130,10 +139,12 @@ async def _build_index(category: str) -> List[dict]:
             "nav_source": nav["source"],
             "verified": bool(a.get("verified")),
             "has_survey": bool(a.get("has_survey")),
+            "surveyor": a.get("owner_name", "") or "",
+            "shared_code": code_counts.get(aid, 1) > 1,
             "created_at": a.get("created_at", ""),
             "_search": norm_text(
                 f"{name} {a.get('matricule','')} {aid} {a.get('district','')} "
-                f"{a.get('sector','')} {a.get('house_number','')}"
+                f"{a.get('sector','')} {a.get('house_number','')} {a.get('owner_name','')}"
             ),
         })
     out.sort(key=lambda r: norm_text(r["name"]))
@@ -204,18 +215,26 @@ async def directory_entries(
     }
 
 
-@router.get("/directory/entry/{address_id}")
-async def directory_entry(address_id: str):
-    """Privacy-filtered public record of one place + guidance data."""
-    addrs = []
-    cursor = db.addresses.find({"address_id": address_id}, {"_id": 0})
-    async for a in cursor:
-        addrs.append(a)
-    if not addrs:
-        raise HTTPException(404, "Address not found in the registry")
-    addrs.sort(key=lambda a: (1 if a.get("has_survey") else 0, a.get("created_at", "")), reverse=True)
-    a = addrs[0]
+@router.get("/directory/entry/{key}")
+async def directory_entry(key: str):
+    """Privacy-filtered public record of one building + guidance data.
+
+    `key` is the immutable record id. The address code is still accepted as a
+    fallback (QR shares, older links); in that case the most complete record is
+    returned and `shared_code` signals that several buildings use that code."""
+    a = await db.addresses.find_one({"id": key}, {"_id": 0})
+    if not a:
+        rows = []
+        async for doc in db.addresses.find({"address_id": key}, {"_id": 0}):
+            rows.append(doc)
+        if not rows:
+            raise HTTPException(404, "Address not found in the registry")
+        rows.sort(key=lambda r: (1 if r.get("has_survey") else 0, r.get("created_at", "")),
+                  reverse=True)
+        a = rows[0]
+    address_id = a["address_id"]
     category = category_of(a)
+    shared_code = await db.addresses.count_documents({"address_id": address_id}) > 1
 
     survey = await db.surveys.find_one(
         {"address_id": address_id, "owner_id": a.get("owner_id")}, {"_id": 0}
@@ -275,10 +294,13 @@ async def directory_entry(address_id: str):
         first_photo = a["photo_base64"]
 
     return {
+        "key": a.get("id") or address_id,
         "address_id": address_id,
         "matricule": a.get("matricule", "") or "",
         "name": name,
         "category": category,
+        "surveyor": a.get("owner_name", "") or "",
+        "shared_code": shared_code,
         "district": a.get("district", "") or "",
         "sector": a.get("sector", "") or "",
         "street_id": a.get("street_id", "") or "",

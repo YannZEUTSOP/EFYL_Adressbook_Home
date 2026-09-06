@@ -39,7 +39,7 @@ class TestDirectorySummary:
         for k in ("household", "commerce", "public", "heritage"):
             assert k in d["counts"] and isinstance(d["counts"][k], int)
         assert d["total"] == sum(d["counts"].values())
-        # sanity floor (spec says ~1246 unique addresses)
+        # sanity floor (registry lists one record per recorded building)
         assert d["total"] >= 100
 
 
@@ -69,8 +69,9 @@ class TestDirectoryEntries:
         p2 = api.get(f"{API}/directory/entries",
                      params={"category": "household", "limit": 10, "offset": 10}).json()
         assert p1["total"] == p2["total"]
-        ids1 = {i["address_id"] for i in p1["items"]}
-        ids2 = {i["address_id"] for i in p2["items"]}
+        # keys are the immutable record ids — address codes are NOT unique
+        ids1 = {i["key"] for i in p1["items"]}
+        ids2 = {i["key"] for i in p2["items"]}
         assert ids1.isdisjoint(ids2)
 
     def test_search_case_and_accent_insensitive(self, api):

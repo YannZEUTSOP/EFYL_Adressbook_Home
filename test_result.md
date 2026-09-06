@@ -287,3 +287,20 @@ agent_communication_v7:
       Already smoke-tested by main agent (web preview): categories 1108/84/39/15, search "alimentation"
       84→12, fiche renders (photo, azimut, nav CTA), guest creation returned EFYL-G-FEECBB / PIN 6069.
       Existing suites (109 tests) must stay green — no old endpoint was modified except the CSV headers.
+
+agent_communication_v7_1:
+  - agent: "main"
+    message: |
+      User audit question ("why 2148 in Admin but 1246 in Directory?") → real bug found in MY design
+      assumption, now fixed. Verified on production data: 2148 address rows for only 1166 distinct
+      codes; 363 codes are shared by 2-8 DIFFERENT buildings (49 m to 1247 m apart, different
+      surveyors); no (code, owner) duplicate exists; 77 codes span 2 categories. The code is derived
+      from quartier+secteur+rue+maison typed by hand (buildAddressId) → collisions between teams.
+      FIX: routes/directory.py no longer groups by address_id. One record per recorded building, key =
+      immutable doc uuid `id` (2148 distinct). Counts now match Admin exactly (2003/89/41/15 = 2148).
+      /api/directory/entry/{key} accepts the uuid (new) or the address code (fallback). New response
+      fields: key, surveyor, shared_code + UI warning banner and "Relevé par X • date" line.
+      Index cache TTL 45s → 10s (full rebuild measured at ~50 ms). tests/test_efyl_v7_directory_guest.py
+      pagination test updated to compare `key` instead of `address_id`. Full suite re-run: 142/142 green.
+      ZZ* test rows purged, production data untouched (matricule/nav_* still empty everywhere).
+      OPEN DATA DEBT for the user to decide: address code is not unique (1345/2148 buildings involved).

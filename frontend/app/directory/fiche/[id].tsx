@@ -187,6 +187,18 @@ export default function DirectoryFiche() {
           />
         )}
 
+        {rec.shared_code && (
+          <View style={styles.warnCard} testID="fiche-shared-code">
+            <Ionicons name="alert-circle-outline" size={16} color={Colors.gpsYellow} />
+            <Text style={styles.warnTxt}>{t.directory.sharedCodeWarn}</Text>
+          </View>
+        )}
+        {!!rec.surveyor && (
+          <Text style={styles.surveyorTxt} testID="fiche-surveyor">
+            ✍️ {t.directory.surveyedBy} {rec.surveyor} • {new Date(rec.created_at).toLocaleDateString()}
+          </Text>
+        )}
+
         {/* Location */}
         <Text style={styles.sectionTitle}>{t.directory.sectionLocation}</Text>
         <View style={styles.card}>
@@ -375,6 +387,13 @@ const styles = StyleSheet.create({
     padding: Spacing.md, marginTop: Spacing.lg,
   },
   privacyTxt: { ...Typography.caption, color: Colors.primary, flex: 1, lineHeight: 17 },
+  warnCard: {
+    flexDirection: 'row', gap: 8, alignItems: 'flex-start',
+    backgroundColor: Colors.pillYellowBg, borderRadius: Radius.md,
+    padding: Spacing.md, marginTop: Spacing.md,
+  },
+  warnTxt: { ...Typography.caption, color: Colors.gpsYellow, flex: 1, lineHeight: 17 },
+  surveyorTxt: { ...Typography.caption, color: Colors.textTertiary, marginTop: Spacing.sm },
   callBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     borderWidth: 2, borderColor: Colors.primary, borderRadius: Radius.md,
