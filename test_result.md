@@ -255,3 +255,35 @@ agent_communication_v6_1:
       Enriched CSV export added (read-only copy, auto_completed column): 611 azimuths recovered from
       photo bearings, legacy frequented_place text converted to places, 3 orphan surveys re-attached.
       CSV survey lookup now owner-first. Verified on production data via curl; 109/109 pytest green.
+
+agent_communication_v7:
+  - agent: "main"
+    message: |
+      v7 batch (June 2026) — TWO new features, ready for full test:
+      (A) RÉPERTOIRE EFYL (public directory + search):
+          Backend routes/directory.py + shared.py:
+            GET /api/directory/summary
+            GET /api/directory/entries?category=household|commerce|public|heritage&q=&sort=name|near|recent&limit=&offset=&lat=&lng=
+            GET /api/directory/entry/{address_id}
+            POST /api/admin/import/matricules?pin=237237  body {csv_text, dry_run}
+          New Address fields: matricule, nav_lat, nav_lng, nav_note (+ 4 new CSV columns before quality_issues in both exports).
+          PRIVACY CONTRACT (must be verified): a household entry MUST NOT return any survey data
+          (no persons, income, phones, materials, total_persons). Commerce/public/heritage return their
+          public fields only. Households also must not expose contact_phone.
+          Frontend: new 5th tab app/(tabs)/directory.tsx, app/directory/list/[category].tsx,
+          app/directory/fiche/[id].tsx, admin CSV import UI in app/admin.tsx.
+      (B) GUEST IDENTITY bound to the device — routes/guest.py:
+            POST /api/guest/register {name, device_hash, device_id, device_label}
+            POST /api/guest/device-check {device_hash}
+            POST /api/guest/lookup {name, device_hash}
+            POST /api/guest/login {pin, ref|guest_id, device_hash}
+          Rules: server-generated 4-digit PIN (weak PINs excluded), bcrypt, guest_id EFYL-G-XXXXXX,
+          lookup by first name is case/accent-insensitive and returns MASKED ids + opaque 15-min `ref`,
+          5 wrong PINs → 429 lock 15 min, device_hash registered in users.devices[], /api/restore works
+          with the guest token, user_id = guest-<device_id> when free (data continuity).
+          Frontend login.tsx modes: guest-choice / guest-new / guest-done / guest-lookup / guest-pin,
+          Profile shows guest id + revealable PIN, offline creation stored in prefs.pendingGuestName and
+          finalised by AppContext.ensurePendingGuest() when the network returns.
+      Already smoke-tested by main agent (web preview): categories 1108/84/39/15, search "alimentation"
+      84→12, fiche renders (photo, azimut, nav CTA), guest creation returned EFYL-G-FEECBB / PIN 6069.
+      Existing suites (109 tests) must stay green — no old endpoint was modified except the CSV headers.

@@ -3,6 +3,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { Storage, SyncOp, SurveySyncOp, Prefs, UserState } from '../services/storage';
 import { Api, AddressDTO, AddressPhoto } from '../services/api';
 import { PhotoStore } from '../services/photoStore';
+import { getDeviceFingerprint } from '../services/device';
 import { STRINGS, Lang, Strings } from '../i18n';
 import { DEMO_ADDRESSES } from '../utils/demoData';
 import type { HouseholdSurvey, Person } from '../types/survey';
@@ -141,6 +142,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (online && wasOfflineRef.current) {
         // Just came back online → auto-flush queue
         syncNow();
+        ensurePendingGuest();
       }
       wasOfflineRef.current = !online;
     });
@@ -170,6 +172,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUserState(u);
     await Storage.setUser(u);
   }, []);
+
+  // A guest identity requested while offline is finalised as soon as the
+  // network is back — the per-device owner id stays the same, so nothing
+  // recorded in the meantime is ever orphaned.
+  const ensurePendingGuest = useCallback(async () => {
+    const prefs = await Storage.getPrefs();
+    const pending = prefs.pendingGuestName;
+    if (!pending) return;
+    const current = await Storage.getUser();
+    if (current.loggedIn) {
+      await Storage.setPrefs({ ...prefs, pendingGuestName: undefined });
+      return;
+    }
+    try {
+      const fp = await getDeviceFingerprint();
+      const devId = await Storage.getDeviceId();
+      const u = await Api.guestRegister({
+        name: pending, device_hash: fp.hash, device_id: devId, device_label: fp.label,
+      });
+      await setUser({
+        loggedIn: true, isGuest: true, userId: u.user_id, guestId: u.guest_id,
+        guestPin: u.pin, name: u.name, token: u.token,
+      });
+      const latest = await Storage.getPrefs();
+      await Storage.setPrefs({ ...latest, pendingGuestName: undefined });
+    } catch {
+      // still offline — try again at the next sync
+    }
+  }, [setUser]);
 
   const refreshAddresses = useCallback(async () => {
     const list = await Storage.getAddresses();
@@ -419,6 +450,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     if (ready && deviceId) {
       syncNow();
+      ensurePendingGuest();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, deviceId]);

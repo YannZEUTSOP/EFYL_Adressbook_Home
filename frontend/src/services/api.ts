@@ -63,6 +63,70 @@ export type AddressDTO = {
   created_at: string;
 };
 
+export type DirectoryCategory = 'household' | 'commerce' | 'public' | 'heritage';
+
+export type DirectoryEntry = {
+  address_id: string;
+  matricule: string;
+  name: string;
+  district: string;
+  sector: string;
+  street_id: string;
+  house_number: string;
+  category: DirectoryCategory;
+  lat: number | null;
+  lng: number | null;
+  nav_source: 'nav_point' | 'corrected' | 'gps';
+  verified: boolean;
+  has_survey: boolean;
+  created_at: string;
+  distance_m?: number;
+};
+
+export type DirectoryDetail = {
+  address_id: string;
+  matricule: string;
+  name: string;
+  category: DirectoryCategory;
+  district: string;
+  sector: string;
+  street_id: string;
+  house_number: string;
+  access_hint: string;
+  nav_note: string;
+  azimuth_degrees: number | null;
+  lat: number | null;
+  lng: number | null;
+  nav_source: 'nav_point' | 'corrected' | 'gps';
+  accuracy_meters: number | null;
+  verified: boolean;
+  created_at: string;
+  photo_base64: string | null;
+  details: Record<string, any>;
+};
+
+export type GuestAccount = {
+  user_id: string;
+  guest_id: string;
+  name: string;
+  pin?: string;
+  token: string;
+  addresses_count: number;
+  is_guest?: boolean;
+  efyl_id?: string;
+};
+
+export type GuestCandidate = {
+  ref: string;
+  guest_id_masked: string;
+  name: string;
+  last_login: string;
+  created_at: string;
+  addresses_count: number;
+  same_device: boolean;
+  is_guest?: boolean;
+};
+
 export const Api = {
   base: () => BASE,
   health: () => request<{ status: string; twilio_enabled?: boolean }>('/health'),
@@ -146,4 +210,50 @@ export const Api = {
     `${BASE}/api/export/csv${ownerId ? `?owner_id=${encodeURIComponent(ownerId)}` : ''}`,
   exportJsonUrl: (ownerId?: string) =>
     `${BASE}/api/export/json${ownerId ? `?owner_id=${encodeURIComponent(ownerId)}` : ''}`,
+
+  // ===== Répertoire (public directory) =====
+  directorySummary: () =>
+    request<{ counts: Record<DirectoryCategory, number>; total: number }>('/directory/summary'),
+  directoryEntries: (opts: {
+    category: DirectoryCategory; q?: string; limit?: number; offset?: number;
+    lat?: number; lng?: number; sort?: 'name' | 'near' | 'recent';
+  }) => {
+    const p = new URLSearchParams({ category: opts.category });
+    if (opts.q) p.set('q', opts.q);
+    p.set('limit', String(opts.limit ?? 50));
+    p.set('offset', String(opts.offset ?? 0));
+    if (opts.sort) p.set('sort', opts.sort);
+    if (opts.lat !== undefined && opts.lng !== undefined) {
+      p.set('lat', String(opts.lat));
+      p.set('lng', String(opts.lng));
+    }
+    return request<{ category: DirectoryCategory; total: number; offset: number; items: DirectoryEntry[] }>(
+      `/directory/entries?${p.toString()}`
+    );
+  },
+  directoryEntry: (addressId: string) =>
+    request<DirectoryDetail>(`/directory/entry/${encodeURIComponent(addressId)}`),
+
+  // ===== Guest identity (device-bound) =====
+  guestDeviceCheck: (deviceHash: string, deviceLabel = '') =>
+    request<{ known: boolean; accounts: GuestCandidate[] }>('/guest/device-check', {
+      method: 'POST',
+      body: JSON.stringify({ device_hash: deviceHash, device_label: deviceLabel }),
+    }),
+  guestRegister: (data: { name: string; device_hash: string; device_id: string; device_label?: string }) =>
+    request<GuestAccount>('/guest/register', { method: 'POST', body: JSON.stringify(data) }),
+  guestLookup: (name: string, deviceHash = '') =>
+    request<{ count: number; candidates: GuestCandidate[] }>('/guest/lookup', {
+      method: 'POST',
+      body: JSON.stringify({ name, device_hash: deviceHash }),
+    }),
+  guestLogin: (data: { pin: string; ref?: string; guest_id?: string; device_hash?: string; device_label?: string }) =>
+    request<GuestAccount>('/guest/login', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Admin: attach matricules / exact navigation points
+  adminImportMatricules: (pin: string, csvText: string, dryRun: boolean) =>
+    request<any>(`/admin/import/matricules?pin=${encodeURIComponent(pin)}`, {
+      method: 'POST',
+      body: JSON.stringify({ csv_text: csvText, dry_run: dryRun }),
+    }),
 };

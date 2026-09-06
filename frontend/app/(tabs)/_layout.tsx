@@ -34,6 +34,16 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="directory"
+        options={{
+          title: t.tabs.directory,
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'library' : 'library-outline'} size={22} color={color} />
+          ),
+          tabBarButtonTestID: 'tab-directory',
+        }}
+      />
+      <Tabs.Screen
         name="scan"
         options={{
           title: t.tabs.scan,

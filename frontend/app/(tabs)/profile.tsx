@@ -18,6 +18,7 @@ export default function ProfileTab() {
   const router = useRouter();
   const [syncing, setSyncing] = useState(false);
   const [nameDraft, setNameDraft] = useState(surveyorName);
+  const [showPin, setShowPin] = useState(false);
 
   React.useEffect(() => { setNameDraft(surveyorName); }, [surveyorName]);
 
@@ -75,6 +76,9 @@ export default function ProfileTab() {
             {user.loggedIn && !!user.efylId && (
               <Text style={styles.efylId} testID="profile-efyl-id">🪪 {user.efylId}{user.phone ? ` • ${user.phone}` : ''}</Text>
             )}
+            {user.loggedIn && user.isGuest && !!user.guestId && (
+              <Text style={styles.efylId} testID="profile-guest-id">🪪 {user.guestId}</Text>
+            )}
             <Text style={styles.userMeta}>
               {addresses.length} {t.profile.addressesCreated} • {surveyCount} {t.profile.surveysSubmitted}
             </Text>
@@ -89,6 +93,28 @@ export default function ProfileTab() {
             </TouchableOpacity>
           )}
         </View>
+
+        {user.loggedIn && user.isGuest && !!user.guestId && (
+          <Section title={t.guest.profileTitle}>
+            <Text style={styles.guestId} testID="profile-guest-card-id">{user.guestId}</Text>
+            {showPin && !!user.guestPin && (
+              <Text style={styles.guestPin} testID="profile-guest-pin">{user.guestPin}</Text>
+            )}
+            {!!user.guestPin && (
+              <TouchableOpacity
+                style={styles.linkRow}
+                onPress={() => setShowPin((v) => !v)}
+                testID="profile-guest-pin-toggle"
+              >
+                <Ionicons name={showPin ? 'eye-off-outline' : 'eye-outline'} size={18} color={Colors.primary} />
+                <Text style={[styles.linkTxt, { color: Colors.primary }]}>
+                  {showPin ? t.guest.hidePin : t.guest.showPin}
+                </Text>
+              </TouchableOpacity>
+            )}
+            <Text style={styles.metaTxt}>⚠️ {t.guest.pinReminder}</Text>
+          </Section>
+        )}
 
         <Section title={t.profile.surveyorName}>
           <Text style={styles.metaTxt}>{t.profile.surveyorNameHint}</Text>
@@ -211,6 +237,8 @@ const styles = StyleSheet.create({
   autoSyncHint: { ...Typography.caption, color: Colors.primary, marginTop: 4, fontFamily: 'DMSans_500Medium' },
   linkRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: 4 },
   linkTxt: { ...Typography.label },
+  guestId: { fontFamily: 'JetBrainsMono_700Bold', fontSize: 20, color: Colors.primary, letterSpacing: 1.5 },
+  guestPin: { fontFamily: 'JetBrainsMono_700Bold', fontSize: 24, color: Colors.accent, letterSpacing: 8, marginTop: 6 },
   nameInput: {
     backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.divider,
     borderRadius: Radius.md, paddingHorizontal: Spacing.md, height: 46,

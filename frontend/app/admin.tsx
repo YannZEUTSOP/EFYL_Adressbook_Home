@@ -9,6 +9,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Colors, Radius, Shadows, Spacing, Typography } from '../src/theme';
 import { useApp } from '../src/contexts/AppContext';
 import { Api } from '../src/services/api';
@@ -29,6 +31,47 @@ export default function AdminScreen() {
   const [searchRes, setSearchRes] = useState<{ address: any; survey: any } | null>(null);
   const [searchErr, setSearchErr] = useState(false);
   const [searching, setSearching] = useState(false);
+
+  // CSV import (matricules + exact navigation points)
+  const [csvText, setCsvText] = useState('');
+  const [csvName, setCsvName] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importRes, setImportRes] = useState<any | null>(null);
+  const [importErr, setImportErr] = useState('');
+
+  const pickCsv = async () => {
+    setImportErr('');
+    setImportRes(null);
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        type: ['text/csv', 'text/comma-separated-values', 'text/plain', 'application/vnd.ms-excel', '*/*'],
+        copyToCacheDirectory: true,
+      });
+      if (res.canceled || !res.assets?.length) return;
+      const asset = res.assets[0];
+      const text = Platform.OS === 'web'
+        ? await (await fetch(asset.uri)).text()
+        : await FileSystem.readAsStringAsync(asset.uri);
+      setCsvText(text);
+      setCsvName(asset.name || 'import.csv');
+    } catch (e: any) {
+      setImportErr(String(e?.message || e));
+    }
+  };
+
+  const runImport = async (dryRun: boolean) => {
+    if (!csvText) return;
+    setImporting(true);
+    setImportErr('');
+    setImportRes(null);
+    try {
+      setImportRes(await Api.adminImportMatricules(pin, csvText, dryRun));
+    } catch (e: any) {
+      setImportErr(String(e?.message || e).replace(/^API \d+:\s*/, ''));
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const doSearch = async () => {
     const q = searchQ.trim().toUpperCase();
@@ -225,6 +268,59 @@ export default function AdminScreen() {
         </TouchableOpacity>
         <Text style={styles.enrichedHint}>{t.admin.exportEnrichedHint}</Text>
 
+        {/* Import matricules / navigation points (CSV from the mapping partner) */}
+        <Text style={styles.sectionTitle}>📥 {t.admin.importTitle}</Text>
+        <View style={styles.importCard}>
+          <Text style={styles.importHint}>{t.admin.importHint}</Text>
+          <TouchableOpacity style={styles.importPickBtn} onPress={pickCsv} testID="admin-import-pick">
+            <Ionicons name="document-attach-outline" size={18} color={Colors.primary} />
+            <Text style={styles.importPickTxt}>{csvName || t.admin.importPick}</Text>
+          </TouchableOpacity>
+          {!!csvText && (
+            <View style={styles.importActions}>
+              <TouchableOpacity
+                style={[styles.importBtn, { backgroundColor: Colors.surface }]}
+                onPress={() => runImport(true)}
+                disabled={importing}
+                testID="admin-import-dry"
+              >
+                <Text style={[styles.importBtnTxt, { color: Colors.textPrimary }]}>{t.admin.importDry}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.importBtn}
+                onPress={() => runImport(false)}
+                disabled={importing}
+                testID="admin-import-run"
+              >
+                {importing ? <ActivityIndicator color={Colors.white} size="small" /> : (
+                  <Text style={styles.importBtnTxt}>{t.admin.importRun}</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+          {!!importErr && (
+            <Text style={[styles.importHint, { color: Colors.error }]} testID="admin-import-error">
+              {t.admin.importError}: {importErr}
+            </Text>
+          )}
+          {!!importRes && (
+            <View style={styles.importResult} testID="admin-import-result">
+              <Text style={styles.importResTitle}>
+                {importRes.dry_run ? `${t.admin.importDry} — ${t.admin.importDone}` : t.admin.importDone}
+              </Text>
+              <Text style={styles.importResLine}>{importRes.rows_read} {t.admin.importRows}</Text>
+              <Text style={styles.importResLine}>{importRes.addresses_matched} {t.admin.importMatched}</Text>
+              <Text style={styles.importResLine}>{importRes.matricules_set} {t.admin.importMat}</Text>
+              <Text style={styles.importResLine}>{importRes.nav_points_set} {t.admin.importNav}</Text>
+              {!!importRes.not_found_count && (
+                <Text style={[styles.importResLine, { color: Colors.gpsYellow }]}>
+                  {importRes.not_found_count} {t.admin.importNotFound}: {(importRes.not_found_sample || []).slice(0, 5).join(', ')}…
+                </Text>
+              )}
+            </View>
+          )}
+        </View>
+
         {/* Search one building — full record (survey answers + persons + places) */}
         <Text style={styles.sectionTitle}>🔍 {t.admin.searchTitle}</Text>
         <View style={styles.searchRow}>
@@ -415,6 +511,26 @@ const styles = StyleSheet.create({
   },
   exportTxt: { color: Colors.white, fontFamily: 'DMSans_700Bold', fontSize: 15 },
   enrichedHint: { ...Typography.caption, color: Colors.textTertiary, marginHorizontal: Spacing.lg, marginTop: 6, lineHeight: 15 },
+  importCard: {
+    backgroundColor: Colors.card, marginHorizontal: Spacing.lg,
+    borderRadius: Radius.lg, padding: Spacing.md, gap: Spacing.sm, ...Shadows.card,
+  },
+  importHint: { ...Typography.caption, color: Colors.textSecondary, lineHeight: 16 },
+  importPickBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderWidth: 2, borderColor: Colors.primary, borderStyle: 'dashed',
+    borderRadius: Radius.md, paddingVertical: 12, paddingHorizontal: Spacing.md,
+  },
+  importPickTxt: { ...Typography.label, color: Colors.primary, flex: 1 },
+  importActions: { flexDirection: 'row', gap: Spacing.sm },
+  importBtn: {
+    flex: 1, backgroundColor: Colors.primary, borderRadius: Radius.md,
+    paddingVertical: 12, alignItems: 'center',
+  },
+  importBtnTxt: { color: Colors.white, fontFamily: 'DMSans_700Bold', fontSize: 13 },
+  importResult: { backgroundColor: Colors.surface, borderRadius: Radius.md, padding: Spacing.md, gap: 2 },
+  importResTitle: { ...Typography.label, fontFamily: 'DMSans_700Bold', marginBottom: 2 },
+  importResLine: { ...Typography.caption, color: Colors.textSecondary },
   searchRow: {
     flexDirection: 'row', gap: 8, marginHorizontal: Spacing.lg, alignItems: 'center',
   },

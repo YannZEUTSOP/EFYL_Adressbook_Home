@@ -113,6 +113,11 @@ class Address(BaseModel):
     owner_name: str = ""       # surveyor display name (tracking)
     photos: Optional[List[dict]] = None  # [{base64, lat, lng, bearing, taken_at}]
     photos_count: Optional[int] = None
+    # Registry / navigation (imported from the cartography partner's CSV)
+    matricule: Optional[str] = ""
+    nav_lat: Optional[float] = None
+    nav_lng: Optional[float] = None
+    nav_note: Optional[str] = ""
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -142,6 +147,10 @@ class AddressCreate(BaseModel):
     owner_name: Optional[str] = ""
     photos: Optional[List[dict]] = None
     photos_count: Optional[int] = None
+    matricule: Optional[str] = ""
+    nav_lat: Optional[float] = None
+    nav_lng: Optional[float] = None
+    nav_note: Optional[str] = ""
 
 
 class AddressUpdate(BaseModel):
@@ -161,6 +170,10 @@ class AddressUpdate(BaseModel):
     is_heritage: Optional[bool] = None
     owner_name: Optional[str] = None
     photos: Optional[List[dict]] = None
+    matricule: Optional[str] = None
+    nav_lat: Optional[float] = None
+    nav_lng: Optional[float] = None
+    nav_note: Optional[str] = None
 
 
 class VerifyRequest(BaseModel):
@@ -799,6 +812,7 @@ async def _build_csv_content(addresses: List[dict], enrich: bool = False) -> str
         "heritage_photos_allowed", "heritage_facilities", "heritage_road_access",
         "heritage_manager", "heritage_phone", "heritage_notes",
         "persons_count", "persons_summary", "persons_places",
+        "matricule", "nav_lat", "nav_lng", "nav_note",
         "quality_issues",
     ]
     if enrich:
@@ -931,6 +945,8 @@ async def _build_csv_content(addresses: List[dict], enrich: bool = False) -> str
             heritage.get("photos_allowed", ""), heritage.get("facilities", ""), heritage.get("road_access", ""),
             heritage.get("manager", ""), heritage.get("phone", ""), heritage.get("notes", ""),
             len(persons), persons_summary, persons_places,
+            a.get("matricule", ""), a.get("nav_lat", ""), a.get("nav_lng", ""),
+            a.get("nav_note", ""),
             "|".join(issues),
         ]
         if enrich:
@@ -1203,6 +1219,13 @@ async def download_doc(filename: str):
 
 
 app.include_router(api_router)
+
+# Newer feature modules (kept out of this file to stop it growing further)
+from routes.directory import router as directory_router  # noqa: E402
+from routes.guest import router as guest_router  # noqa: E402
+
+app.include_router(directory_router)
+app.include_router(guest_router)
 
 app.add_middleware(
     CORSMiddleware,

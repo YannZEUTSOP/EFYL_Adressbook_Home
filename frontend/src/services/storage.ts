@@ -33,6 +33,8 @@ export type SurveySyncOp = {
 export type Prefs = {
   language: 'fr' | 'en';
   surveyorName?: string;
+  /** Guest identity requested while offline — registered at the next sync. */
+  pendingGuestName?: string;
 };
 
 export type SurveyDraft = {
@@ -48,6 +50,9 @@ export type UserState = {
   name?: string;
   efylId?: string;
   token?: string;
+  isGuest?: boolean;
+  guestId?: string;   // EFYL-G-XXXXXX
+  guestPin?: string;  // kept on THIS device only, so the worker can re-read it
 };
 
 async function getJSON<T>(key: string, fallback: T): Promise<T> {

@@ -132,3 +132,24 @@ All feedback from user's tester in Spain implemented & tested (iteration_6, 57/5
 - Téléchargement : GET /api/admin/docs/questionnaires.pdf?pin=237237 (protégé PIN, lecture seule).
 - Aucune modification fonctionnelle de l'app (demande explicite de l'utilisateur).
 - v6.2b : version anglaise du PDF ajoutée (/app/memory/EFYL_Questionnaires_Complets_EN.pdf, script generate_questionnaire_pdf_en.py). Endpoint accepte ?lang=en.
+
+## v7 — Répertoire EFYL + Identité invité liée à l'appareil — Juin 2026
+
+### A. Répertoire EFYL (registre & recherche publique)
+- NOUVEL onglet « Répertoire » (5e onglet) → `app/(tabs)/directory.tsx` : 4 catégories avec compteurs (Foyers / Commerces / Services publics / Sites & Patrimoine) + total du registre central.
+- `app/directory/list/[category].tsx` : recherche serveur debouncée (nom, matricule, code adresse, quartier, secteur, n° de maison — insensible casse/accents), tri A→Z / Le plus proche (GPS, permission contextuelle + lien Réglages) / Récents, pagination 40, états vide/hors-ligne.
+- `app/directory/fiche/[id].tsx` : fiche filtrée par confidentialité + photo façade + mini-carte + bloc Localisation (quartier/secteur/rue/n°, repères d'accès, azimut d'entrée, source du point) + bloc Informations par catégorie + bouton « Se rendre à cette adresse » (bottom sheet : Google Maps / OpenStreetMap / copier coordonnées) + Appeler + partage.
+- Backend `routes/directory.py` (+ `shared.py` pour db/JWT/normalisation) :
+  - `GET /api/directory/summary` — compteurs par catégorie (dédoublonnage par code adresse : 2148 lignes → 1246 fiches uniques).
+  - `GET /api/directory/entries` — index en cache 45 s, noms résolus depuis les enquêtes (family_name / commerce.name / public_service.name / heritage.name) sinon contact_name.
+  - `GET /api/directory/entry/{address_id}` — LISTE BLANCHE par catégorie. Foyer = AUCUNE donnée d'enquête (pas d'habitants, revenus, téléphones, matériaux) ; commerce/public/patrimoine = infos publiques utiles.
+  - Point de guidage : `nav_lat/nav_lng` (import terrain) > GPS corrigé satellite > GPS brut, source affichée à l'utilisateur.
+- Nouveaux champs Address : `matricule`, `nav_lat`, `nav_lng`, `nav_note` (+ 4 colonnes ajoutées aux 2 exports CSV avant `quality_issues`).
+- Import admin : `POST /api/admin/import/matricules?pin=` (`{csv_text, dry_run}`) — détection auto du séparateur (`,`/`;`) et des colonnes (address_id|code|code_adresse, matricule, latitude_exacte/nav_lat, longitude_exacte/nav_lng, acces/nav_note), mode test à blanc, rapport (lignes lues / adresses trouvées / matricules / points / codes inconnus). UI dans `/admin` via expo-document-picker.
+
+### B. Identité invité liée à l'appareil (`routes/guest.py`)
+- Empreinte d'appareil `src/services/device.ts` : SHA-256(identifiant d'installation Android/iOS ou signature navigateur + modèle + marque + OS) — volontairement INDÉPENDANTE d'AsyncStorage pour survivre à un effacement du stockage.
+- Compte invité = `EFYL-G-XXXXXX` + PIN 4 chiffres généré serveur (PIN faibles exclus), bcrypt, `is_guest:true`, liste `devices[]`. `user_id = guest-<deviceId>` quand il est libre → toutes les données déjà enregistrées sur l'appareil restent rattachées.
+- Cas d'usage couverts : 1re fois (création + affichage unique ID/PIN copiables) · reprise auto (session locale) · appareil reconnu après effacement du stockage (carte « Reprendre ») · nouvel appareil (recherche par prénom → candidats à identifiants MASQUÉS + `ref` JWT 15 min → PIN) · aucun candidat → création · 5 PIN faux → blocage 15 min · plusieurs invités par appareil · hors-ligne (`prefs.pendingGuestName` → enregistrement automatique au retour du réseau via `ensurePendingGuest()` dans AppContext) · consultation ID/PIN dans Profil.
+- Sécurité : le prénom ne sert QU'À retrouver un compte (jamais à s'authentifier), identifiants masqués (`EFYL-G-••••C3`), `ref` opaque signé, hash d'appareil = indice seulement.
+- `login.tsx` : nouveaux modes guest-choice / guest-new / guest-done / guest-lookup / guest-pin ; `Profil` affiche l'identité invité avec PIN révélable.
